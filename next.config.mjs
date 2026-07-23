@@ -3,6 +3,12 @@ const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["cesium"],
   webpack: (config, { webpack }) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@spz-loader/core": new URL("./lib/cesiumSpzStub.ts", import.meta.url)
+        .pathname,
+    };
+
     config.plugins.push(
       new webpack.DefinePlugin({
         CESIUM_BASE_URL: JSON.stringify("/cesium"),
