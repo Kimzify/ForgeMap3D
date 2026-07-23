@@ -1,0 +1,152 @@
+.list {
+  display: grid;
+  margin: 0 -18px -18px;
+}
+
+.section {
+  border-bottom: 1px solid rgb(92 88 101 / 16%);
+}
+
+.section:last-child {
+  border-bottom: 0;
+}
+
+.header {
+  align-items: center;
+  background: rgb(247 247 251 / 72%);
+  display: flex;
+  justify-content: space-between;
+  min-height: 66px;
+  padding: 0 18px;
+}
+
+.content {
+  background: rgb(255 255 255 / 56%);
+  display: grid;
+  gap: 18px;
+  padding: 16px 18px 22px;
+}
+
+.layerSwitch {
+  --switch-height: 30px;
+  --switch-knob: 24px;
+  --switch-width: 52px;
+}
+
+.toggleRow {
+  align-items: center;
+  color: #2d2931;
+  display: flex;
+  font-size: 14px;
+  font-weight: 750;
+  gap: 12px;
+  justify-content: space-between;
+  line-height: 1.25;
+  min-height: 38px;
+}
+
+.toggleRow > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.metricCard {
+  background: rgb(248 247 251 / 78%);
+  border: 1px solid rgb(255 255 255 / 58%);
+  border-radius: 7px;
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.metricCard div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.metricCard dt,
+.metricCard dd {
+  color: #675f6b;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.metricCard dd {
+  font-variant-numeric: tabular-nums;
+  padding-left: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.roadWidthSummary {
+  margin-top: -6px;
+}
+
+.nestedSettings {
+  border-left: 2px solid rgb(230 56 105 / 18%);
+  display: grid;
+  gap: 14px;
+  padding-left: 14px;
+}
+
+.controlGroup {
+  display: grid;
+  gap: 10px;
+}
+
+.label {
+  color: #2d2931;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.help {
+  color: #716b75;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.warning {
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-line);
+  border-radius: 7px;
+  color: var(--warning-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0;
+  padding: 9px 10px;
+}
+
+.divider {
+  background: rgb(92 88 101 / 16%);
+  height: 1px;
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .header {
+    align-items: stretch;
+    gap: 10px;
+    min-height: auto;
+    padding: 12px 14px;
+  }
+
+  .content {
+    gap: 14px;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .list {
+    margin: 0 -12px -12px;
+  }
+}

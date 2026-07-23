@@ -1,0 +1,21 @@
+.row {
+  align-items: center;
+  color: #2d2931;
+  display: flex;
+  font-size: 14px;
+  font-weight: 750;
+  gap: 11px;
+  line-height: 1.25;
+}
+
+.row input {
+  accent-color: var(--accent);
+  block-size: 20px;
+  flex: 0 0 auto;
+  inline-size: 20px;
+}
+
+.row input:focus-visible {
+  outline: 3px solid var(--accent-focus);
+  outline-offset: 2px;
+}

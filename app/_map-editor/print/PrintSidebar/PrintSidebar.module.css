@@ -1,0 +1,68 @@
+.tabs {
+  background: rgb(247 247 251 / 66%);
+  border: 1px solid rgb(255 255 255 / 64%);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: -6px 0 16px;
+  padding: 4px;
+}
+
+.tabs button {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 750;
+  min-height: 40px;
+  border-radius: 7px;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.tabs button[aria-selected="true"] {
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 4px 12px rgb(42 36 48 / 9%);
+  color: var(--accent);
+}
+
+.tabs button:active {
+  transform: var(--press-scale);
+}
+
+.warnings {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.warning {
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-line);
+  border-radius: 7px;
+  color: var(--warning-text);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+  padding: 9px 10px;
+}
+
+.exportSpinner {
+  animation: export-spin 860ms linear infinite;
+}
+
+@keyframes export-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (max-width: 420px) {
+  .tabs {
+    margin: 0 0 14px;
+  }
+}

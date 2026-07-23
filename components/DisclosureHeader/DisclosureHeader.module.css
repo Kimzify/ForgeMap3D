@@ -1,0 +1,56 @@
+.toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #2d2931;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  font-size: 15px;
+  font-weight: 750;
+  gap: 12px;
+  justify-content: flex-start;
+  min-height: 52px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  transition:
+    color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.toggle:hover {
+  color: #17151b;
+}
+
+.toggle:active {
+  transform: var(--press-scale);
+}
+
+.toggle:focus-visible {
+  outline: 3px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.title {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.title > svg {
+  background: var(--accent-soft);
+  border-radius: 7px;
+  color: var(--accent);
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 7px;
+  width: 34px;
+}
+
+@media (max-width: 700px) {
+  .toggle {
+    min-height: 44px;
+  }
+}

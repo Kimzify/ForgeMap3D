@@ -1,0 +1,36 @@
+.attribution {
+  align-items: center;
+  backdrop-filter: blur(16px) saturate(160%);
+  background: rgb(255 255 255 / 62%);
+  border: 1px solid rgb(255 255 255 / 68%);
+  border-radius: 6px;
+  box-shadow: 0 8px 18px rgb(42 36 48 / 10%);
+  bottom: 14px;
+  color: #59535f;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 4px 10px;
+  max-width: min(760px, calc(100% - 32px));
+  padding: 7px 10px;
+  position: absolute;
+  right: 14px;
+  z-index: 4;
+}
+
+.attribution a {
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.attribution a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .attribution {
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+  }
+}

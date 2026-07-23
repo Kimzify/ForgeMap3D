@@ -1,0 +1,91 @@
+.stage {
+  background:
+    radial-gradient(circle at 18% 18%, rgb(255 255 255 / 74%), transparent 24rem),
+    linear-gradient(145deg, #f6f3f7, #dfdde6);
+  inset: 0;
+  overflow: hidden;
+  position: absolute;
+  z-index: 5;
+}
+
+.canvas,
+.canvas canvas {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.canvas {
+  inset: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.sizeCard {
+  backdrop-filter: var(--material-blur);
+  background: rgb(255 255 255 / 70%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 8px;
+  box-shadow: var(--material-shadow);
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px;
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  z-index: 2;
+}
+
+.sizeCard strong {
+  color: #17151b;
+  font-size: 14px;
+}
+
+.sizeCard span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.loading {
+  backdrop-filter: var(--material-blur);
+  background: rgb(255 255 255 / 76%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 8px;
+  box-shadow: var(--material-shadow);
+  display: grid;
+  gap: 6px;
+  left: 50%;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 14px 16px;
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.loading strong {
+  color: #302b33;
+  font-size: 15px;
+}
+
+.loading span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .sizeCard {
+    left: 12px;
+    max-width: calc(100% - 24px);
+    right: auto;
+    top: 12px;
+    width: calc(100% - 24px);
+  }
+
+  .sizeCard strong,
+  .sizeCard span {
+    font-size: 12px;
+  }
+}

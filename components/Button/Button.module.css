@@ -1,0 +1,248 @@
+.tool,
+.icon,
+.generate,
+.panelGenerate,
+.export,
+.back {
+  align-items: center;
+  background: rgb(255 255 255 / 84%);
+  border: 1px solid rgb(255 255 255 / 70%);
+  box-shadow: 0 5px 14px rgb(42 36 48 / 8%);
+  color: #2e2b33;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  min-height: 38px;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.tool,
+.generate,
+.panelGenerate,
+.export,
+.back {
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+  letter-spacing: 0;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.tool.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 8px 18px var(--accent-shadow);
+  color: #ffffff;
+}
+
+.generate,
+.panelGenerate,
+.export {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 10px 22px var(--accent-shadow);
+  color: #ffffff;
+}
+
+.generate {
+  min-width: 156px;
+}
+
+.panelGenerate,
+.export,
+.back {
+  min-height: 46px;
+  width: 100%;
+}
+
+.panelGenerate {
+  margin-top: 18px;
+}
+
+.export {
+  border-radius: 7px;
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.back {
+  margin-top: auto;
+}
+
+.panelGenerate:disabled,
+.export:disabled,
+.tool:disabled,
+.icon:disabled,
+.generate:disabled,
+.back:disabled,
+.settingsApply:disabled,
+.advanced:disabled,
+.reset:disabled {
+  background: rgb(240 239 245 / 82%);
+  border-color: rgb(196 190 202 / 42%);
+  box-shadow: none;
+  color: #958e99;
+  cursor: not-allowed;
+}
+
+.icon {
+  aspect-ratio: 1 / 1;
+  border-radius: 7px;
+  padding: 0;
+  width: 38px;
+}
+
+.tool:not(:disabled):hover,
+.icon:not(:disabled):hover,
+.generate:not(:disabled):hover,
+.panelGenerate:not(:disabled):hover,
+.export:not(:disabled):hover,
+.back:not(:disabled):hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 8px 20px rgb(42 36 48 / 12%);
+}
+
+.generate:not(:disabled):hover,
+.panelGenerate:not(:disabled):hover,
+.export:not(:disabled):hover {
+  background: var(--accent-strong);
+}
+
+.tool:not(:disabled):active,
+.icon:not(:disabled):active,
+.generate:not(:disabled):active,
+.panelGenerate:not(:disabled):active,
+.export:not(:disabled):active,
+.back:not(:disabled):active,
+.settingsApply:not(:disabled):active,
+.advanced:not(:disabled):active,
+.reset:not(:disabled):active {
+  transform: var(--press-scale);
+  transition-duration: 90ms;
+}
+
+.tool:focus-visible,
+.icon:focus-visible,
+.generate:focus-visible,
+.panelGenerate:focus-visible,
+.export:focus-visible,
+.back:focus-visible,
+.settingsApply:focus-visible,
+.advanced:focus-visible,
+.reset:focus-visible,
+.inlineDisclosure:focus-visible,
+.advancedClose:focus-visible {
+  outline: 3px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.settingsApply {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  justify-self: flex-start;
+  min-height: 42px;
+  padding: 0 18px;
+  transition:
+    background-color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.settingsApply:not(:disabled):hover {
+  background: var(--accent-strong);
+}
+
+.advanced,
+.reset,
+.inlineDisclosure,
+.advancedClose {
+  cursor: pointer;
+}
+
+.advanced {
+  background: rgb(255 255 255 / 82%);
+  border: 1px solid var(--accent-border);
+  border-radius: 7px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 800;
+  min-height: 46px;
+  transition:
+    background-color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.advanced:not(:disabled):hover {
+  background: var(--accent-soft);
+}
+
+.inlineDisclosure {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #716b75;
+  display: inline-flex;
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: flex-start;
+  line-height: 1.35;
+  padding: 0;
+  text-align: left;
+}
+
+.advancedClose {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #918b96;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0;
+  width: 34px;
+  transition:
+    color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.advancedClose:not(:disabled):hover {
+  color: #675f6b;
+}
+
+.reset {
+  background: rgb(247 247 251 / 86%);
+  border: 0;
+  border-radius: 7px;
+  color: #2d2931;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 18px;
+  min-height: 38px;
+  transition:
+    background-color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.reset:not(:disabled):hover {
+  background: #eceaf1;
+}
+
+@media (max-width: 700px) {
+  .settingsApply {
+    justify-self: stretch;
+  }
+}
