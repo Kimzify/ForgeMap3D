@@ -51,6 +51,22 @@ Forge Map 3D currently accepts addresses, postcodes, place names, and
 coordinates inside the Netherlands. Coordinates outside the Netherlands are not
 supported.
 
+## Docker
+
+Build and run the production app with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+To stop it:
+
+```bash
+docker compose down
+```
+
 ## Checks
 
 Run the complete offline release gate:

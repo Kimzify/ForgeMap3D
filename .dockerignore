@@ -1,0 +1,10 @@
+.git
+.next
+node_modules
+npm-debug.log*
+Dockerfile
+compose.yaml
+.dockerignore
+.env*
+coverage
+public/cesium
