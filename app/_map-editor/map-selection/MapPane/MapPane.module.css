@@ -1,0 +1,36 @@
+.pane {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.mapCanvas {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 26%), transparent 36%),
+    var(--canvas-bg);
+  cursor: grab;
+  height: 100%;
+  width: 100%;
+}
+
+.drawMode .mapCanvas {
+  cursor: crosshair;
+}
+
+.drawingSelection .mapCanvas {
+  cursor: grabbing;
+}
+
+.mapCanvas :global(.cesium-viewer),
+.mapCanvas :global(.cesium-viewer-cesiumWidgetContainer),
+.mapCanvas :global(.cesium-widget),
+.mapCanvas canvas {
+  cursor: inherit;
+  height: 100%;
+  width: 100%;
+}
+
+.mapCanvas canvas {
+  filter: saturate(0.66) contrast(0.94) brightness(1.06);
+}

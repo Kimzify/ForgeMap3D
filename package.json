@@ -1,0 +1,47 @@
+{
+  "name": "forgemap3d",
+  "version": "0.1.0",
+  "description": "A printable 3D map editor for the Netherlands using OpenStreetMap and 3DBAG.",
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/check-line-prism-boundary.mjs && node scripts/check-building-boundary.mjs && node scripts/check-water-visibility.mjs && node scripts/check-osm-water-topology.mjs && node scripts/check-land-cover-stability.mjs && node scripts/check-netherlands-scope.mjs && node scripts/check-export-orientation.mjs && node scripts/check-export-loading-yield.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "postinstall": "node scripts/copy-cesium-assets.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "3d-printing",
+    "maps",
+    "openstreetmap",
+    "stl",
+    "three.js"
+  ],
+  "homepage": "https://forgemap3d.com",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "dependencies": {
+    "cesium": "^1.143.0",
+    "lucide-react": "^1.25.0",
+    "next": "^16.2.11",
+    "polygon-clipping": "^0.15.7",
+    "proj4": "^2.20.9",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.185.1",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.11",
+    "typescript": "^6.0.3"
+  }
+}

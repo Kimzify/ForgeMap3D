@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 96" role="img" aria-labelledby="title">
+  <title id="title">Forge Map 3D</title>
+  <defs>
+    <linearGradient id="logo-frame" x1="9" y1="17" x2="63" y2="83" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e63869"/>
+      <stop offset="0.52" stop-color="#8b5cc7"/>
+      <stop offset="1" stop-color="#168fcf"/>
+    </linearGradient>
+    <linearGradient id="logo-water" x1="18" y1="63" x2="54" y2="63" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#62c9de"/>
+      <stop offset="1" stop-color="#168fcf"/>
+    </linearGradient>
+    <linearGradient id="word" x1="190" y1="18" x2="340" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e63869"/>
+      <stop offset="0.52" stop-color="#8b5cc7"/>
+      <stop offset="1" stop-color="#168fcf"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(0 12) scale(1.125)">
+    <path
+      d="M32 4.5 55 17.75v28.5L32 59.5 9 46.25v-28.5L32 4.5Z"
+      fill="#fdfcff"
+      stroke="url(#logo-frame)"
+      stroke-linejoin="round"
+      stroke-width="5"
+    />
+    <path
+      d="M16 38.5 32 29l16 9.5L32 48 16 38.5Z"
+      fill="#eef3f8"
+      stroke="#cdd6e3"
+      stroke-linejoin="round"
+      stroke-width="2"
+    />
+    <path d="M16 38.5v6.25L32 54v-6L16 38.5Z" fill="#253750"/>
+    <path d="M48 38.5v6.25L32 54v-6L48 38.5Z" fill="#166aa7"/>
+    <path
+      d="M19.5 40.4c4.2-2.1 7.5-2.1 10 0s7.7 2.1 15 0v4.2L32 52l-12.5-7.4v-4.2Z"
+      fill="url(#logo-water)"
+    />
+    <path
+      d="M24 17.5h19v7H31.7v6.1h9.5v6.7h-9.5v12.2H24v-32Z"
+      fill="#172236"
+    />
+    <path d="M34.5 18.5h8.5v6h-8.5v-6Z" fill="#e63869"/>
+    <path d="M34.5 31.4h6.7v5.8h-6.7v-5.8Z" fill="#168fcf"/>
+  </g>
+  <text
+    x="88"
+    y="59"
+    fill="#172236"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="40"
+    font-weight="780"
+    letter-spacing="0"
+  >Forge</text>
+  <text
+    x="210"
+    y="59"
+    fill="url(#word)"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="40"
+    font-weight="780"
+    letter-spacing="0"
+  >Map 3D</text>
+</svg>

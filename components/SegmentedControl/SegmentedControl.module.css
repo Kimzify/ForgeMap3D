@@ -1,0 +1,57 @@
+.control {
+  background: rgb(247 247 251 / 72%);
+  border: 1px solid rgb(255 255 255 / 62%);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.control button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #2d2931;
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 800;
+  gap: 8px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 12px;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    transform 100ms ease-out;
+}
+
+.control button[aria-pressed="true"] {
+  background: rgb(255 255 255 / 90%);
+  border-color: rgb(255 255 255 / 76%);
+  box-shadow: 0 5px 14px rgb(42 36 48 / 10%);
+  color: var(--accent);
+}
+
+.control button:active {
+  transform: var(--press-scale);
+}
+
+.control button:focus-visible {
+  outline: 3px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 360px) {
+  .control {
+    grid-template-columns: 1fr;
+  }
+}

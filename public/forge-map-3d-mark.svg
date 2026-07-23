@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Forge Map 3D</title>
+  <defs>
+    <linearGradient id="frame" x1="8" y1="12" x2="56" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e63869"/>
+      <stop offset="0.52" stop-color="#8b5cc7"/>
+      <stop offset="1" stop-color="#168fcf"/>
+    </linearGradient>
+    <linearGradient id="water" x1="16" y1="45" x2="48" y2="45" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#62c9de"/>
+      <stop offset="1" stop-color="#168fcf"/>
+    </linearGradient>
+  </defs>
+  <path
+    d="M32 4.5 55 17.75v28.5L32 59.5 9 46.25v-28.5L32 4.5Z"
+    fill="#fdfcff"
+    stroke="url(#frame)"
+    stroke-linejoin="round"
+    stroke-width="5"
+  />
+  <path
+    d="M16 38.5 32 29l16 9.5L32 48 16 38.5Z"
+    fill="#eef3f8"
+    stroke="#cdd6e3"
+    stroke-linejoin="round"
+    stroke-width="2"
+  />
+  <path d="M16 38.5v6.25L32 54v-6L16 38.5Z" fill="#253750"/>
+  <path d="M48 38.5v6.25L32 54v-6L48 38.5Z" fill="#166aa7"/>
+  <path
+    d="M19.5 40.4c4.2-2.1 7.5-2.1 10 0s7.7 2.1 15 0v4.2L32 52l-12.5-7.4v-4.2Z"
+    fill="url(#water)"
+  />
+  <path
+    d="M24 17.5h19v7H31.7v6.1h9.5v6.7h-9.5v12.2H24v-32Z"
+    fill="#172236"
+  />
+  <path d="M34.5 18.5h8.5v6h-8.5v-6Z" fill="#e63869"/>
+  <path d="M34.5 31.4h6.7v5.8h-6.7v-5.8Z" fill="#168fcf"/>
+</svg>

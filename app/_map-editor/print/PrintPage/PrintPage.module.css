@@ -1,0 +1,82 @@
+.previewPane {
+  background:
+    radial-gradient(circle at 22% 12%, rgb(255 255 255 / 68%), transparent 28rem),
+    linear-gradient(150deg, #f7f4f8, #dfdde6);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.backOverlay {
+  align-items: center;
+  backdrop-filter: var(--material-blur);
+  background: rgb(255 255 255 / 68%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 7px;
+  box-shadow: var(--material-shadow);
+  color: #2d2931;
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 800;
+  gap: 8px;
+  left: 18px;
+  min-height: 40px;
+  padding: 0 13px;
+  position: absolute;
+  top: 18px;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 100ms ease-out;
+  z-index: 6;
+}
+
+.backOverlay:hover {
+  background: rgb(255 255 255 / 82%);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.backOverlay:active {
+  transform: var(--press-scale);
+}
+
+.emptyState {
+  backdrop-filter: var(--material-blur);
+  background: rgb(255 255 255 / 74%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 8px;
+  box-shadow: var(--material-shadow);
+  display: grid;
+  gap: 6px;
+  left: 50%;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 14px 16px;
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.emptyState strong {
+  color: #302b33;
+  font-size: 15px;
+}
+
+@media (max-width: 980px) {
+  .backOverlay {
+    left: 14px;
+    top: 14px;
+  }
+}
+
+@media (max-width: 560px) {
+  .backOverlay {
+    left: 12px;
+    top: 12px;
+  }
+}

@@ -1,0 +1,65 @@
+.row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 58px minmax(0, 1fr);
+}
+
+.swatch {
+  border: 4px solid rgb(255 255 255 / 92%);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px rgb(196 190 202 / 58%),
+    0 5px 14px rgb(42 36 48 / 11%);
+  cursor: pointer;
+  display: block;
+  height: 58px;
+  overflow: hidden;
+  width: 58px;
+}
+
+.swatch input {
+  cursor: pointer;
+  height: 100%;
+  opacity: 0;
+  width: 100%;
+}
+
+.input {
+  background: rgb(255 255 255 / 84%);
+  border: 1px solid rgb(196 190 202 / 58%);
+  border-radius: 7px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 70%),
+    0 2px 7px rgb(42 36 48 / 7%);
+  color: #17151b;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  min-height: 46px;
+  min-width: 0;
+  padding: 0 14px;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.swatch input:focus-visible,
+.input:focus-visible {
+  outline: 3px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 360px) {
+  .row {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .swatch {
+    height: 48px;
+    width: 48px;
+  }
+}

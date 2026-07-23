@@ -1,0 +1,405 @@
+.controls {
+  display: grid;
+  gap: 12px;
+  left: clamp(12px, 2vw, 24px);
+  pointer-events: none;
+  position: absolute;
+  top: clamp(12px, 2vw, 22px);
+  width: min(456px, calc(100% - clamp(24px, 4vw, 48px)));
+  z-index: 4;
+}
+
+.search,
+.shapeToolbar {
+  backdrop-filter: var(--material-blur);
+  background: rgb(255 255 255 / 68%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 8px;
+  box-shadow: var(--material-shadow);
+  pointer-events: auto;
+}
+
+.search {
+  display: grid;
+  overflow: hidden;
+  width: 100%;
+}
+
+.searchForm {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 50px;
+  padding: 7px 14px;
+}
+
+.searchForm svg {
+  color: var(--muted);
+}
+
+.searchForm input {
+  background: transparent;
+  border: 0;
+  color: #17151b;
+  font-size: 15px;
+  font-weight: 650;
+  min-width: 0;
+  outline: 0;
+}
+
+.searchForm input::placeholder {
+  color: #8c8592;
+}
+
+.searchForm input:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.searchResults {
+  border-top: 1px solid rgb(92 88 101 / 16%);
+  display: grid;
+  max-height: 230px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.searchMessage {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px;
+}
+
+.searchResultButton {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #302b33;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  min-height: 46px;
+  padding: 8px 10px;
+  text-align: left;
+  transition:
+    background-color 140ms ease,
+    transform 90ms ease-out;
+}
+
+.searchResultButton:hover {
+  background: var(--accent-soft);
+}
+
+.searchResultButton:active {
+  transform: var(--press-scale);
+}
+
+.searchResultButton span {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.searchResultButton small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.shapeToolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 7px;
+  width: 100%;
+}
+
+.generateStatus {
+  align-items: center;
+  animation: generate-status-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  backdrop-filter: blur(24px) saturate(180%);
+  background: rgb(255 255 255 / 74%);
+  border: 1px solid rgb(255 255 255 / 74%);
+  border-radius: 8px;
+  box-shadow:
+    0 16px 38px rgb(42 36 48 / 14%),
+    inset 0 1px 0 rgb(255 255 255 / 80%);
+  color: #2e2932;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  overflow: hidden;
+  padding: 14px;
+  pointer-events: auto;
+  transform-origin: 24px 0;
+}
+
+.generateStatus strong,
+.generateStatus span {
+  display: block;
+  letter-spacing: 0;
+}
+
+.generateStatus strong {
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.generateStatus span {
+  color: #706a76;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.generateStatusIcon {
+  aspect-ratio: 1 / 1;
+  background:
+    radial-gradient(circle, rgb(255 255 255 / 92%) 0 42%, transparent 44%),
+    conic-gradient(from 40deg, transparent 0 16%, var(--accent) 18% 42%, #f7aac2 55%, transparent 72%);
+  border-radius: 999px;
+  box-shadow:
+    0 8px 18px rgb(230 56 105 / 18%),
+    inset 0 0 0 1px rgb(255 255 255 / 62%);
+  inline-size: 34px;
+}
+
+.generateStatus:not(.generateStatusError) .generateStatusIcon {
+  animation: generate-status-spin 960ms linear infinite;
+}
+
+.generateStatusError {
+  background: rgb(255 245 248 / 84%);
+  border-color: rgb(230 56 105 / 24%);
+}
+
+.generateStatusError .generateStatusIcon {
+  background:
+    radial-gradient(circle, rgb(255 255 255 / 92%) 0 42%, transparent 44%),
+    conic-gradient(var(--accent), #f7aac2, var(--accent));
+}
+
+.shapeToolSet,
+.toolbarActionSet {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.shapeToolSet {
+  flex: 1 1 100%;
+}
+
+.toolbarActionSet {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.toolbarGenerateButton {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 13px;
+  min-width: 0;
+  padding: 0 12px;
+  width: auto;
+}
+
+.shapeToolButton {
+  flex: 1 1 0;
+  font-size: 13px;
+  min-width: 0;
+  padding: 0 11px;
+  width: auto;
+}
+
+.radiusControl {
+  align-items: center;
+  background: rgb(247 247 251 / 74%);
+  border: 1px solid rgb(255 255 255 / 66%);
+  border-radius: 7px;
+  color: #2d2931;
+  display: flex;
+  flex: 1 1 200px;
+  gap: 8px;
+  max-width: none;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.radiusControl input {
+  accent-color: var(--accent);
+  inline-size: min(120px, 100%);
+  min-width: 76px;
+}
+
+.radiusValue {
+  color: #625b68;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  min-width: 58px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .controls {
+    left: 14px;
+    top: 14px;
+    width: calc(100% - 28px);
+  }
+
+  .search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .shapeToolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .shapeToolSet,
+  .radiusControl {
+    flex: 1 1 100%;
+  }
+
+  .radiusControl input {
+    inline-size: 100%;
+  }
+
+  .toolbarGenerateButton {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .controls {
+    width: min(430px, calc(100% - 24px));
+  }
+
+  .shapeToolButton span {
+    display: none;
+  }
+
+  .shapeToolSet {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .shapeToolButton {
+    min-height: 42px;
+    padding: 0 8px;
+  }
+
+  .toolbarActionSet {
+    display: grid;
+    flex: 1 1 100%;
+    grid-template-columns: 38px 38px minmax(0, 1fr);
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .toolbarGenerateButton {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .shapeToolbar {
+    gap: 6px;
+    width: 100%;
+  }
+
+  .radiusControl {
+    flex: 1 1 100%;
+    max-width: none;
+    min-height: 42px;
+    width: 100%;
+  }
+
+  .radiusControl input {
+    inline-size: 100%;
+  }
+
+  .shapeToolButton {
+    flex: 1 1 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .controls {
+    gap: 8px;
+    left: 10px;
+    top: 10px;
+    width: calc(100% - 20px);
+  }
+
+  .searchForm {
+    min-height: 44px;
+    padding: 5px 10px;
+  }
+
+  .toolbarGenerateButton span {
+    display: inline;
+  }
+
+  .toolbarActionSet {
+    grid-template-columns: 38px 38px minmax(0, 1fr);
+  }
+
+  .toolbarGenerateButton {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .toolbarGenerateButton span {
+    display: none;
+  }
+}
+
+@keyframes generate-status-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes generate-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generateStatus,
+  .generateStatus:not(.generateStatusError) .generateStatusIcon {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .generateStatus {
+    backdrop-filter: none;
+    background: #ffffff;
+  }
+}
