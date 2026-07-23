@@ -27,7 +27,7 @@
   "type": "module",
   "dependencies": {
     "cesium": "^1.143.0",
-    "lucide-react": "^1.25.0",
+    "lucide-react": "^1.26.0",
     "next": "^16.2.11",
     "polygon-clipping": "^0.15.7",
     "proj4": "^2.20.9",
