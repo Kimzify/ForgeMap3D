@@ -1,32 +1,36 @@
-"use client";
+import type { Metadata } from "next";
+import HomeClientPage from "./HomeClientPage";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
-import { Suspense } from "react";
-import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
-import { APP_TEXT } from "@/lib/text";
-
-const MapSelectionPage = dynamic(
-  () => import("./_map-editor/map-selection/MapSelectionPage"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="app-loading">{APP_TEXT.common.loadingMap}</div>
-    ),
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
   },
-);
+};
 
-function MapSelectionRoute() {
-  const searchParams = useSearchParams();
-
-  return <MapSelectionPage key={searchParams.toString()} />;
-}
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: SITE_NAME,
+  url: SITE_URL.toString(),
+  applicationCategory: "DesignApplication",
+  operatingSystem: "Web",
+  description: SITE_DESCRIPTION,
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+};
 
 export default function Home() {
   return (
-    <Suspense
-      fallback={<div className="app-loading">{APP_TEXT.common.loadingMap}</div>}
-    >
-      <MapSelectionRoute />
-    </Suspense>
+    <>
+      <HomeClientPage />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+    </>
   );
 }
