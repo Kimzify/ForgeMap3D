@@ -23,11 +23,9 @@ Public home: [forgemap3d.com](https://forgemap3d.com)
 
 ## Preview
 
-Screenshots and a short workflow GIF will live in [`docs/assets`](docs/assets).
-They are intentionally left out until the public interface is stable.
+[![Watch the Forge Map 3D workflow](docs/assets/forge-map-3d-workflow.jpg)](docs/assets/forge-map-3d-workflow.mp4)
 
-<!-- TODO: Add docs/assets/editor-overview.png -->
-<!-- TODO: Add docs/assets/forge-map-3d-workflow.gif -->
+Click the preview to watch the full workflow video.
 
 ## Requirements
 
