@@ -5,7 +5,7 @@ It supports locations in the Netherlands, using OpenStreetMap for roads, water,
 land cover, and fallback building footprints, plus detailed 3DBAG building
 geometry where available.
 
-Public home: [forgemap3d.com](https://forgemap3d.com)
+[Try it Online](https://forgemap3d.com)
 
 > Forge Map 3D is pre-release software. Check generated geometry in your
 > slicer before printing.
