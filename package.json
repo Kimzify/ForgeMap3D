@@ -3,14 +3,18 @@
   "version": "0.1.0",
   "description": "A printable 3D map editor for the Netherlands using OpenStreetMap and 3DBAG.",
   "scripts": {
-    "dev": "next dev --webpack",
     "build": "next build --webpack",
+    "dev": "next dev --webpack",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/check-line-prism-boundary.mjs && node scripts/check-building-boundary.mjs && node scripts/check-water-visibility.mjs && node scripts/check-land-cover-stability.mjs && node scripts/check-netherlands-scope.mjs && node scripts/check-export-orientation.mjs && node scripts/check-export-loading-yield.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
-    "postinstall": "node scripts/copy-cesium-assets.mjs"
+    "postinstall": "node scripts/copy-cesium-assets.mjs",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "engines": {
     "node": ">=22"
@@ -26,6 +30,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.2",
     "cesium": "^1.143.0",
     "lucide-react": "^1.25.0",
     "next": "^16.2.11",
@@ -42,6 +47,7 @@
     "@types/three": "^0.185.1",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.2.11",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "^4.114.0"
   }
 }
