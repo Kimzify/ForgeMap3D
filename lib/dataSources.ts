@@ -1,6 +1,12 @@
 import { APP_TEXT } from "./text";
 
 export const DATA_SOURCES = {
+  overtureMaps: {
+    name: APP_TEXT.dataSources.overtureMaps.name,
+    attribution: APP_TEXT.dataSources.overtureMaps.attribution,
+    attributionUrl: "https://docs.overturemaps.org/attribution/",
+    docsUrl: "https://docs.overturemaps.org/guides/buildings/",
+  },
   openStreetMap: {
     name: APP_TEXT.dataSources.openStreetMap.name,
     tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -53,13 +59,24 @@ export function isInsideNetherlands(longitude: number, latitude: number) {
   );
 }
 
+export function buildingSourceForLocation(
+  longitude: number,
+  latitude: number,
+) {
+  return isInsideNetherlands(longitude, latitude)
+    ? "threeDbag"
+    : "overtureMaps";
+}
+
 export type AppConfig = {
+  overtureMaps: typeof DATA_SOURCES.overtureMaps;
   openStreetMap: typeof DATA_SOURCES.openStreetMap;
   threeDbag: typeof DATA_SOURCES.threeDbag;
   view: typeof NETHERLANDS_VIEW;
 };
 
 export const APP_CONFIG: AppConfig = {
+  overtureMaps: DATA_SOURCES.overtureMaps,
   openStreetMap: DATA_SOURCES.openStreetMap,
   threeDbag: DATA_SOURCES.threeDbag,
   view: NETHERLANDS_VIEW,

@@ -1,6 +1,21 @@
 import { gunzipSync } from "node:zlib";
 import { isInsideNetherlands, NETHERLANDS_VIEW } from "@/lib/dataSources";
+import {
+  createLocalMetricProjection,
+  crossesInternationalDateLine,
+  isSupportedLocation,
+  localBoundsToWgs84,
+  maximumRadiusForLocation,
+} from "@/lib/geography";
 import type { MapSelection, SelectionShape } from "@/lib/mapTypes";
+import {
+  osmLandCoverKind,
+  osmLandCoverQuery,
+} from "@/lib/osmLandCover";
+import {
+  fetchOvertureBuildingFootprints,
+  type OvertureBuildingFootprint,
+} from "@/lib/overtureBuildings";
 import {
   extractOsmWaterPolygons,
   type OsmPointProjector,
@@ -58,6 +73,7 @@ const OSM_BUILDING_MAX_HEIGHT_METERS = 80;
 const OSM_BUILDING_MIN_HEIGHT_METERS = 2.5;
 const OSM_WATERWAY_MAX_WIDTH_METERS = 100;
 const OSM_WATERWAY_MIN_WIDTH_METERS = 0.5;
+const OVERTURE_BUILDING_LIMIT = 4000;
 
 type OsmCacheEntry = {
   expiresAt: number;
@@ -144,12 +160,16 @@ function parseShape(searchParams: URLSearchParams): SelectionShape {
   return shape === "hexagon" || shape === "rectangle" ? shape : "circle";
 }
 
-function clampRadius(value: number | null) {
-  return clamp(value ?? 1250, 100, 5000);
+function clampRadius(value: number | null, maximum: number) {
+  return clamp(value ?? 1250, 100, maximum);
 }
 
-function clampRectangleSide(value: number | null, fallbackRadius: number) {
-  return clamp((value ?? fallbackRadius * 2) / 2, 100, 5000) * 2;
+function clampRectangleSide(
+  value: number | null,
+  fallbackRadius: number,
+  maximum: number,
+) {
+  return clamp((value ?? fallbackRadius * 2) / 2, 100, maximum) * 2;
 }
 
 function errorMessage(error: unknown) {
@@ -690,7 +710,7 @@ type OsmLayerKey = "buildings" | "land" | "roads" | "water";
 
 function osmCacheKey(bbox: WgsBbox) {
   return [
-    "v3",
+    "v4",
     ...[bbox.south, bbox.west, bbox.north, bbox.east].map((value) =>
       value.toFixed(6),
     ),
@@ -739,12 +759,7 @@ out geom 650;`;
   }
 
   if (layer === "land") {
-    return `[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_SECONDS}];
-(
-  way["landuse"~"grass|forest|meadow|recreation_ground|park|cemetery|allotments|farmland|farmyard|orchard|vineyard|residential|commercial|industrial|retail|construction|brownfield|greenfield|quarry"](${box});
-  way["natural"~"wood|grassland|scrub|heath|wetland|sand|beach|dune|bare_rock|rock|scree|glacier"](${box});
-);
-out geom(${box}) 350;`;
+    return osmLandCoverQuery(bbox, OVERPASS_QUERY_TIMEOUT_SECONDS);
   }
 
   return `[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_SECONDS}];
@@ -1053,10 +1068,11 @@ function osmBuildingHeightMeters(tags: Record<string, string>) {
   return OSM_BUILDING_DEFAULT_HEIGHT_METERS;
 }
 
-function osmFootprintToPrintableBuilding(
+function footprintToPrintableBuilding(
   footprint: ModelPoint[],
   heightMeters: number,
-  id: number,
+  buildingId: string,
+  id = buildingId,
 ): PrintableBuilding | null {
   const points = deduplicatePoints(footprint);
   if (points.length < 3) {
@@ -1079,10 +1095,42 @@ function osmFootprintToPrintableBuilding(
   }
 
   return {
-    buildingId: `osm-way-${id}`,
-    id: `osm-way-${id}`,
+    buildingId,
+    id,
     surfaces,
   };
+}
+
+function overtureBuildingsToPrintableBuildings(
+  footprints: OvertureBuildingFootprint[],
+  projectPoint: PointProjector,
+  boundary: ModelPoint[],
+) {
+  const buildings = footprints.flatMap((footprint) =>
+    footprint.polygons.flatMap((polygon, polygonIndex) => {
+      const points = polygon.map((point) =>
+        projectPoint(point.longitude, point.latitude),
+      );
+      const clipped = clipPolygonToSelection(points, boundary);
+      const buildingId = `overture-${footprint.id}`;
+      const building = footprintToPrintableBuilding(
+        clipped,
+        footprint.heightMeters,
+        buildingId,
+        `${buildingId}-${polygonIndex}`,
+      );
+
+      return building ? [building] : [];
+    }),
+  );
+
+  return buildings
+    .sort(
+      (left, right) =>
+        pointDistance(surfaceCentroid(left.surfaces[0])) -
+        pointDistance(surfaceCentroid(right.surfaces[0])),
+    )
+    .slice(0, OVERTURE_BUILDING_LIMIT);
 }
 
 function classifyOsm(
@@ -1111,10 +1159,10 @@ function classifyOsm(
 
     if (tags.building && tags.building !== "no" && closed) {
       const polygon = clipPolygonToSelection(points, boundary);
-      const building = osmFootprintToPrintableBuilding(
+      const building = footprintToPrintableBuilding(
         polygon,
         osmBuildingHeightMeters(tags),
-        element.id,
+        `osm-way-${element.id}`,
       );
 
       if (building) {
@@ -1159,11 +1207,11 @@ function classifyOsm(
       continue;
     }
 
-    if (tags.landuse || tags.natural) {
-      const kind = tags.landuse ?? tags.natural ?? "land";
+    const landCoverKind = osmLandCoverKind(tags);
+    if (landCoverKind) {
       landCover.push({
-        category: inferPrintableLandCoverCategory(kind),
-        kind,
+        category: inferPrintableLandCoverCategory(landCoverKind),
+        kind: landCoverKind,
         points: polygon,
       });
     }
@@ -1183,7 +1231,6 @@ export async function GET(request: Request) {
   const latitude = parseNumber(searchParams, "lat");
   const longitude = parseLongitude(searchParams);
   const shape = parseShape(searchParams);
-  const radius = clampRadius(parseNumber(searchParams, "radius"));
 
   if (latitude === null || longitude === null) {
     return Response.json(
@@ -1192,19 +1239,25 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!isInsideNetherlands(longitude, latitude)) {
+  if (!isSupportedLocation(longitude, latitude)) {
     return Response.json(
-      {
-        error: "Forge Map 3D currently supports locations in the Netherlands only.",
-      },
+      { error: "This location is outside supported map bounds." },
       { status: 400 },
     );
   }
 
-  const widthMeters = clampRectangleSide(parseNumber(searchParams, "width"), radius);
+  const useThreeDbag = isInsideNetherlands(longitude, latitude);
+  const maximumRadius = maximumRadiusForLocation(longitude, latitude);
+  const radius = clampRadius(parseNumber(searchParams, "radius"), maximumRadius);
+  const widthMeters = clampRectangleSide(
+    parseNumber(searchParams, "width"),
+    radius,
+    maximumRadius,
+  );
   const heightMeters = clampRectangleSide(
     parseNumber(searchParams, "height"),
     radius,
+    maximumRadius,
   );
   const sideMeters = Math.max(widthMeters, heightMeters);
   const selection: MapSelection =
@@ -1223,57 +1276,92 @@ export async function GET(request: Request) {
         };
   const radiusMeters =
     shape === "rectangle"
-      ? clamp(sideMeters / 2, 100, 5000)
+      ? clamp(sideMeters / 2, 100, maximumRadius)
       : radius;
   const boundary = selectionLocalFootprint(selection, radiusMeters);
   const bounds = selectionLocalBounds(selection, radiusMeters);
-  const centerRd = lngLatToRd(longitude, latitude);
+  const centerRd = useThreeDbag ? lngLatToRd(longitude, latitude) : null;
   const rdExtent = NETHERLANDS_VIEW.rdExtent;
-  const threeDbagBbox = [
-    clamp(centerRd.x + bounds.minX, rdExtent.minX, rdExtent.maxX),
-    clamp(centerRd.y + bounds.minY, rdExtent.minY, rdExtent.maxY),
-    clamp(centerRd.x + bounds.maxX, rdExtent.minX, rdExtent.maxX),
-    clamp(centerRd.y + bounds.maxY, rdExtent.minY, rdExtent.maxY),
-  ];
-  const osmBbox = wgsBboxFromRd(threeDbagBbox);
-  const projectOsmPoint: PointProjector = (pointLongitude, pointLatitude) => {
-    const rd = lngLatToRd(pointLongitude, pointLatitude);
-    return {
-      x: rd.x - centerRd.x,
-      y: rd.y - centerRd.y,
-    };
-  };
+  const threeDbagBbox = centerRd
+    ? [
+        clamp(centerRd.x + bounds.minX, rdExtent.minX, rdExtent.maxX),
+        clamp(centerRd.y + bounds.minY, rdExtent.minY, rdExtent.maxY),
+        clamp(centerRd.x + bounds.maxX, rdExtent.minX, rdExtent.maxX),
+        clamp(centerRd.y + bounds.maxY, rdExtent.minY, rdExtent.maxY),
+      ]
+    : null;
+  const osmBbox = threeDbagBbox
+    ? wgsBboxFromRd(threeDbagBbox)
+    : localBoundsToWgs84(longitude, latitude, bounds);
+  if (crossesInternationalDateLine(osmBbox)) {
+    return Response.json(
+      { error: "Selections crossing the international date line are not supported." },
+      { status: 400 },
+    );
+  }
+
+  const localProjection = createLocalMetricProjection(longitude, latitude);
+  const projectOsmPoint: PointProjector = centerRd
+    ? (pointLongitude, pointLatitude) => {
+        const rd = lngLatToRd(pointLongitude, pointLatitude);
+        return {
+          x: rd.x - centerRd.x,
+          y: rd.y - centerRd.y,
+        };
+      }
+    : localProjection.project;
   const warnings: string[] = [];
   const threeDbagSignal = AbortSignal.timeout(43000);
   const osmSignal = AbortSignal.timeout(OVERPASS_TOTAL_TIMEOUT_MS);
-  const [threeDbagResult, osmResult] = await Promise.all([
-    fetchThreeDbagTileIndex(threeDbagBbox, threeDbagSignal).then(
-      async (tileIndex) => {
-        const urls = tileDownloadUrls(tileIndex);
-        const tileResults = await Promise.allSettled(
-          urls.map((url) => fetchCityJsonTile(url, threeDbagSignal)),
-        );
+  const overtureSignal = AbortSignal.timeout(30000);
+  const threeDbagRequest =
+    useThreeDbag && threeDbagBbox
+      ? fetchThreeDbagTileIndex(threeDbagBbox, threeDbagSignal).then(
+          async (tileIndex) => {
+            const urls = tileDownloadUrls(tileIndex);
+            const tileResults = await Promise.allSettled(
+              urls.map((url) => fetchCityJsonTile(url, threeDbagSignal)),
+            );
 
-        return {
-          tileCount: urls.length,
-          tileResults,
-        };
-      },
-      (error: unknown) => ({ error }),
-    ),
+            return {
+              tileCount: urls.length,
+              tileResults,
+            };
+          },
+          (error: unknown) => ({ error }),
+        )
+      : Promise.resolve({ tileCount: 0, tileResults: [] });
+  const overtureRequest = useThreeDbag
+    ? Promise.resolve({
+        status: "fulfilled" as const,
+        value: [] as OvertureBuildingFootprint[],
+      })
+    : fetchOvertureBuildingFootprints(osmBbox, overtureSignal).then(
+        (footprints) => ({
+          status: "fulfilled" as const,
+          value: footprints,
+        }),
+        (error: unknown) => ({
+          status: "rejected" as const,
+          reason: error,
+        }),
+      );
+  const [threeDbagResult, osmResult, overtureResult] = await Promise.all([
+    threeDbagRequest,
     fetchOsm(osmBbox, osmSignal).then(
       (osm) => ({ status: "fulfilled" as const, value: osm }),
       (error: unknown) => ({ status: "rejected" as const, reason: error }),
     ),
+    overtureRequest,
   ]);
 
   const cityJsonTiles: CityJsonTile[] = [];
   let cityJsonTileCount = 0;
-  if ("error" in threeDbagResult) {
+  if (useThreeDbag && "error" in threeDbagResult) {
     warnings.push(
       errorMessage(threeDbagResult.error) ?? "3DBAG tile index failed to load.",
     );
-  } else {
+  } else if ("tileCount" in threeDbagResult) {
     cityJsonTileCount = threeDbagResult.tileCount;
     for (const result of threeDbagResult.tileResults) {
       if (result.status === "fulfilled") {
@@ -1298,11 +1386,11 @@ export async function GET(request: Request) {
     }
   }
 
-  if (cityJsonTileCount === 0) {
+  if (useThreeDbag && cityJsonTileCount === 0) {
     warnings.push("3DBAG did not return any exact LoD2.2 tiles for this area.");
   }
 
-  if (cityJsonTiles.length === 0 && cityJsonTileCount > 0) {
+  if (useThreeDbag && cityJsonTiles.length === 0 && cityJsonTileCount > 0) {
     warnings.push("No exact 3DBAG LoD2.2 tile data was available for rendering.");
   }
 
@@ -1325,18 +1413,39 @@ export async function GET(request: Request) {
 
   const osm: OsmResponse = { elements: osmPayload.elements };
   const osmLayers = classifyOsm(osm, projectOsmPoint, boundary);
-  const threeDbagBuildings = extractBuildingsFromCityJsonTiles(
-    cityJsonTiles,
-    centerRd,
-    boundary,
-  );
+  const overtureBuildings =
+    overtureResult.status === "fulfilled"
+      ? overtureBuildingsToPrintableBuildings(
+          overtureResult.value,
+          projectOsmPoint,
+          boundary,
+        )
+      : [];
+  if (!useThreeDbag && overtureResult.status === "rejected") {
+    warnings.push(
+      `Overture Maps buildings failed: ${
+        errorMessage(overtureResult.reason) ?? "data failed to load."
+      }`,
+    );
+  }
+  const threeDbagBuildings =
+    useThreeDbag && centerRd
+      ? extractBuildingsFromCityJsonTiles(cityJsonTiles, centerRd, boundary)
+      : [];
+  const shouldUseOvertureBuildings =
+    !useThreeDbag && overtureBuildings.length > 0;
   const shouldUseOsmBuildings =
-    threeDbagBuildings.length === 0 && osmLayers.buildings.length > 0;
-  const buildings = shouldUseOsmBuildings
-    ? osmLayers.buildings
-    : threeDbagBuildings;
+    threeDbagBuildings.length === 0 &&
+    !shouldUseOvertureBuildings &&
+    osmLayers.buildings.length > 0;
+  const buildings =
+    threeDbagBuildings.length > 0
+      ? threeDbagBuildings
+      : shouldUseOvertureBuildings
+        ? overtureBuildings
+        : osmLayers.buildings;
 
-  if (shouldUseOsmBuildings) {
+  if (useThreeDbag && shouldUseOsmBuildings) {
     warnings.push(
       "3DBAG returned no building meshes; using OpenStreetMap building footprints with estimated heights.",
     );
@@ -1362,6 +1471,17 @@ export async function GET(request: Request) {
       osmElements: osm.elements?.length ?? 0,
       roads: osmLayers.roads.length,
       water: osmLayers.water.length + osmLayers.waterLines.length,
+    },
+    sources: {
+      buildings:
+        useThreeDbag && threeDbagBuildings.length > 0
+          ? "threeDbag"
+          : shouldUseOvertureBuildings
+            ? "overtureMaps"
+            : "openStreetMap",
+      openStreetMap: true,
+      overtureMaps: shouldUseOvertureBuildings,
+      threeDbag: useThreeDbag && threeDbagBuildings.length > 0,
     },
     warnings,
     water: osmLayers.water,

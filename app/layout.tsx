@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Forge Map 3D",
   description:
-    "A printable 3D map editor for the Netherlands using OpenStreetMap and 3DBAG.",
+    "A worldwide printable 3D map editor using OpenStreetMap and detailed 3DBAG data in the Netherlands.",
 };
 
 export const viewport: Viewport = {

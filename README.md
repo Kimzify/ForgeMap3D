@@ -1,9 +1,9 @@
 # Forge Map 3D
 
 Forge Map 3D turns a real place into a customizable model for 3D printing.
-It supports locations in the Netherlands, using OpenStreetMap for roads, water,
-land cover, and fallback building footprints, plus detailed 3DBAG building
-geometry where available.
+It supports locations worldwide using OpenStreetMap for roads, water, and land
+cover, Overture Maps for enriched building footprints, and detailed 3DBAG
+building geometry in the Netherlands.
 
 [Try it Online](https://forgemap3d.com)
 
@@ -18,8 +18,9 @@ geometry where available.
 - Preview the result interactively in 3D.
 - Export a printable STL and a color OBJ/MTL archive.
 - Use 3DBAG LoD2.2 building meshes for enhanced Dutch building detail.
-- Use OpenStreetMap inside the Netherlands for roads, water, land cover, and
-  fallback building footprints when 3DBAG meshes are unavailable.
+- Use OpenStreetMap worldwide for roads, water, and land cover.
+- Use Overture Maps for enriched worldwide building footprints where 3DBAG
+  detail is unavailable.
 
 ## Preview
 
@@ -34,7 +35,10 @@ Click the preview to watch the full workflow video.
 - Internet access while using the editor, because map geometry and imagery are
   fetched from public upstream services
 
-No API keys or environment variables are currently required.
+No API keys are required. `NOMINATIM_BASE_URL` can optionally point global
+search at a self-hosted or third-party Nominatim-compatible service.
+`OVERTURE_BUILDINGS_PM_TILES_URL` can optionally pin a specific Overture
+buildings archive; otherwise the latest public release is discovered.
 
 ## Local Development
 
@@ -45,9 +49,10 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Forge Map 3D currently accepts addresses, postcodes, place names, and
-coordinates inside the Netherlands. Coordinates outside the Netherlands are not
-supported.
+Forge Map 3D accepts worldwide addresses, postcodes, place names, and
+coordinates between approximately 85°S and 85°N. Locations outside the
+Netherlands have a maximum selection radius of 2 km; Dutch locations can use
+up to 5 km.
 
 ## Docker
 
@@ -88,14 +93,15 @@ npm run build
 
 ## Data Sources
 
-- [OpenStreetMap](https://www.openstreetmap.org/copyright) provides roads,
-  waterways, land cover, map imagery, and fallback building footprints used
-  inside the Netherlands. Data is © OpenStreetMap contributors and available
-  under the ODbL.
+- [OpenStreetMap](https://www.openstreetmap.org/copyright) provides worldwide
+  roads, waterways, land cover, map imagery, and source building data. Data is
+  © OpenStreetMap contributors and available under the ODbL.
+- [Overture Maps](https://docs.overturemaps.org/guides/buildings/) provides
+  enriched worldwide building footprints assembled from OpenStreetMap and
+  additional open sources.
 - [3DBAG](https://docs.3dbag.nl/en/) provides enhanced Dutch building geometry
   by tudelft3d and 3DGI under CC BY 4.0.
-- [PDOK Locatieserver](https://api.pdok.nl/bzk/locatieserver/search/v3_1/ui/)
-  provides Dutch place-name search.
+- [Nominatim](https://nominatim.org/) provides worldwide place-name search.
 - Public Overpass API instances provide OpenStreetMap geometry used for model
   generation.
 
@@ -108,14 +114,16 @@ required by the source licenses.
 
 ## Current Scope and Limitations
 
-- Forge Map 3D currently supports locations in the Netherlands only.
-- When 3DBAG building meshes are unavailable inside the Netherlands, building
-  heights are estimates derived from OpenStreetMap tags and defaults.
+- 3DBAG building detail is available only for selections centered in the
+  Netherlands.
+- When 3DBAG building meshes are unavailable, building heights use Overture
+  values where available and otherwise fall back to estimates.
+- Selections crossing the international date line are not currently supported.
 - Public data can be incomplete, outdated, or geometrically invalid.
 - Upstream services can time out or rate-limit requests. Water fetch failures
   intentionally block export rather than silently producing an incorrect map.
 - Detailed meshes may need repair in a slicer before printing.
-- Place-name search uses the Dutch PDOK location service.
+- Place-name search uses OpenStreetMap Nominatim.
 - Large areas can produce slow previews and large exports.
 
 ## Contributing

@@ -1,7 +1,7 @@
 export const DEFAULT_RADIUS_METERS = 1250;
 export const MIN_RADIUS_METERS = 100;
 export const MAX_RADIUS_METERS = 5000;
-export const LOCATION_SEARCH_DEBOUNCE_MS = 300;
+export const MAX_OSM_ONLY_RADIUS_METERS = 2000;
 export const CESIUM_BASE_URL_PATH = "/cesium";
 export const OSM_IMAGERY_TILE_URL = "https://tile.openstreetmap.org/";
 export const RADIUS_SLIDER_STEP_METERS = 50;
@@ -13,7 +13,7 @@ export const CAMERA_RESET_DURATION_SECONDS = 0.8;
 export const LOCATION_FOCUS_DURATION_SECONDS = 0.7;
 export const OSM_IMAGERY_MAXIMUM_LEVEL = 19;
 export const CAMERA_MINIMUM_ZOOM_DISTANCE_METERS = 250;
-export const CAMERA_MAXIMUM_ZOOM_DISTANCE_METERS = 2500000;
+export const CAMERA_MAXIMUM_ZOOM_DISTANCE_METERS = 30000000;
 export const SELECTION_FILL_COLOR = "#ff6b8a";
 export const SELECTION_FILL_ALPHA = 0.18;
 export const SELECTION_OUTLINE_COLOR = "#e63869";

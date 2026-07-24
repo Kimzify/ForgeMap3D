@@ -26,7 +26,10 @@ export type LocationSearchOptions = {
 };
 
 export type MapAttribution = {
+  overtureMaps: AppConfig["overtureMaps"];
   osm: AppConfig["openStreetMap"];
+  showOvertureMaps: boolean;
+  showThreeDbag: boolean;
   threeDbag: AppConfig["threeDbag"];
 };
 

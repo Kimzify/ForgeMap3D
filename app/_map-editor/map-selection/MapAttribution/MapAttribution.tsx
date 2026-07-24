@@ -18,24 +18,38 @@ export default function MapAttribution({
           {DATA_SOURCE_TEXT.openStreetMap.contributors}
         </a>
       </span>
-      <span>
-        {DATA_SOURCE_TEXT.threeDbag.creditPrefix}{" "}
-        <a
-          href={attribution.threeDbag.copyrightUrl}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {DATA_SOURCE_TEXT.threeDbag.copyright}
-        </a>
-        ,{" "}
-        <a
-          href={attribution.threeDbag.licenseUrl}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {DATA_SOURCE_TEXT.threeDbag.license}
-        </a>
-      </span>
+      {attribution.showOvertureMaps ? (
+        <span>
+          {DATA_SOURCE_TEXT.overtureMaps.creditPrefix} ©{" "}
+          <a
+            href={attribution.overtureMaps.attributionUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {DATA_SOURCE_TEXT.overtureMaps.contributors}
+          </a>
+        </span>
+      ) : null}
+      {attribution.showThreeDbag ? (
+        <span>
+          {DATA_SOURCE_TEXT.threeDbag.creditPrefix}{" "}
+          <a
+            href={attribution.threeDbag.copyrightUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {DATA_SOURCE_TEXT.threeDbag.copyright}
+          </a>
+          ,{" "}
+          <a
+            href={attribution.threeDbag.licenseUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {DATA_SOURCE_TEXT.threeDbag.license}
+          </a>
+        </span>
+      ) : null}
     </div>
   );
 }

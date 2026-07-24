@@ -86,6 +86,7 @@ function RoadWidthSummary({
 export default function LayerSettingsPanel({
   actions,
   buildingHeightMetrics,
+  buildingSource,
   onAdvancedLayerPanelChange,
   onLayerSectionToggle,
   onPrintLayerToggle,
@@ -94,6 +95,17 @@ export default function LayerSettingsPanel({
   printModelSettings,
 }: LayerSettingsPanelProps) {
   const buildingSettings = printModelSettings.layers.buildings;
+  const usesFootprintBuildings = buildingSource !== "threeDbag";
+  const footprintBuildingOption =
+    buildingSource === "overtureMaps"
+      ? {
+          label: LAYER_TEXT.buildings.dataOvertureMaps,
+          value: "overtureMaps" as const,
+        }
+      : {
+          label: LAYER_TEXT.buildings.dataOpenStreetMap,
+          value: "openStreetMap" as const,
+        };
   const roadSettings = printModelSettings.layers.roads;
   const waterSettings = printModelSettings.layers.water;
   const landCoverSettings = printModelSettings.layers.landCover;
@@ -117,22 +129,36 @@ export default function LayerSettingsPanel({
                 {LAYER_TEXT.buildings.data}
               </label>
               <SelectField
-                disabled={!printLayers.buildings}
+                disabled={!printLayers.buildings || usesFootprintBuildings}
                 id="building-data"
                 label={LAYER_TEXT.buildings.data}
                 onChange={(data) => actions.updateBuildingSettings({ data })}
                 options={[
-                  {
-                    label: LAYER_TEXT.buildings.dataHighDetail,
-                    value: "highDetail",
-                  },
+                  usesFootprintBuildings
+                    ? footprintBuildingOption
+                    : {
+                        label: LAYER_TEXT.buildings.dataHighDetail,
+                        value: "highDetail",
+                      },
                 ]}
-                value={buildingSettings.data}
+                value={
+                  usesFootprintBuildings
+                    ? footprintBuildingOption.value
+                    : buildingSettings.data
+                }
               />
               <p className={styles.help}>
-                {LAYER_TEXT.buildings.dataHelp}
+                {buildingSource === "overtureMaps"
+                  ? LAYER_TEXT.buildings.dataOvertureMapsHelp
+                  : usesFootprintBuildings
+                    ? LAYER_TEXT.buildings.dataOpenStreetMapHelp
+                  : LAYER_TEXT.buildings.dataHelp}
               </p>
-              <p className={styles.warning}>{LAYER_TEXT.buildings.dataWarning}</p>
+              {usesFootprintBuildings ? null : (
+                <p className={styles.warning}>
+                  {LAYER_TEXT.buildings.dataWarning}
+                </p>
+              )}
             </div>
 
             <RangeNumberField

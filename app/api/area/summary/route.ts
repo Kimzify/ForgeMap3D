@@ -3,6 +3,12 @@ import {
   isInsideNetherlands,
   NETHERLANDS_VIEW,
 } from "@/lib/dataSources";
+import {
+  crossesInternationalDateLine,
+  isSupportedLocation,
+  localBoundsToWgs84,
+  maximumRadiusForLocation,
+} from "@/lib/geography";
 import type { MapSelection, SelectionShape } from "@/lib/mapTypes";
 import { clamp, lngLatToRd } from "@/lib/rd";
 import { selectionLocalBounds } from "@/lib/selectionGeometry";
@@ -41,12 +47,16 @@ function parseShape(searchParams: URLSearchParams): SelectionShape {
   return shape === "hexagon" || shape === "rectangle" ? shape : "circle";
 }
 
-function clampRadius(value: number | null) {
-  return clamp(value ?? 1250, 100, 5000);
+function clampRadius(value: number | null, maximum: number) {
+  return clamp(value ?? 1250, 100, maximum);
 }
 
-function clampRectangleSide(value: number | null, fallbackRadius: number) {
-  return clamp((value ?? fallbackRadius * 2) / 2, 100, 5000) * 2;
+function clampRectangleSide(
+  value: number | null,
+  fallbackRadius: number,
+  maximum: number,
+) {
+  return clamp((value ?? fallbackRadius * 2) / 2, 100, maximum) * 2;
 }
 
 export async function GET(request: Request) {
@@ -54,7 +64,6 @@ export async function GET(request: Request) {
   const latitude = parseNumber(searchParams, "lat");
   const longitude = parseLongitude(searchParams);
   const shape = parseShape(searchParams);
-  const radius = clampRadius(parseNumber(searchParams, "radius"));
 
   if (latitude === null || longitude === null) {
     return Response.json(
@@ -63,10 +72,24 @@ export async function GET(request: Request) {
     );
   }
 
-  const widthMeters = clampRectangleSide(parseNumber(searchParams, "width"), radius);
+  if (!isSupportedLocation(longitude, latitude)) {
+    return Response.json(
+      { error: "This location is outside supported map bounds." },
+      { status: 400 },
+    );
+  }
+
+  const maximumRadius = maximumRadiusForLocation(longitude, latitude);
+  const radius = clampRadius(parseNumber(searchParams, "radius"), maximumRadius);
+  const widthMeters = clampRectangleSide(
+    parseNumber(searchParams, "width"),
+    radius,
+    maximumRadius,
+  );
   const heightMeters = clampRectangleSide(
     parseNumber(searchParams, "height"),
     radius,
+    maximumRadius,
   );
   const sideMeters = Math.max(widthMeters, heightMeters);
   const selection: MapSelection =
@@ -85,16 +108,29 @@ export async function GET(request: Request) {
         };
   const radiusMeters =
     shape === "rectangle"
-      ? clamp(sideMeters / 2, 100, 5000)
+      ? clamp(sideMeters / 2, 100, maximumRadius)
       : radius;
 
   if (!isInsideNetherlands(longitude, latitude)) {
-    return Response.json(
-      {
-        error: "Forge Map 3D currently supports locations in the Netherlands only.",
+    const bounds = selectionLocalBounds(selection, radiusMeters);
+    const bbox = localBoundsToWgs84(longitude, latitude, bounds);
+    if (crossesInternationalDateLine(bbox)) {
+      return Response.json(
+        { error: "Selections crossing the international date line are not supported." },
+        { status: 400 },
+      );
+    }
+
+    return Response.json({
+      selection: {
+        ...selection,
+        radiusMeters,
       },
-      { status: 400 },
-    );
+      crs: "LOCAL",
+      bboxWgs84: bbox,
+      sourceMode: "openStreetMap",
+      threeDbag: null,
+    });
   }
 
   const center = lngLatToRd(longitude, latitude);
@@ -154,5 +190,6 @@ export async function GET(request: Request) {
       timeStamp: data.timeStamp ?? null,
       source: url.toString(),
     },
+    sourceMode: "threeDbag",
   });
 }

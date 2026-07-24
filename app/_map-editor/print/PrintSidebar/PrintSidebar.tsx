@@ -142,6 +142,9 @@ export default function PrintSidebar({
           <LayerSettingsPanel
             actions={actions}
             buildingHeightMetrics={buildingHeightMetrics}
+            buildingSource={
+              printModelData?.sources?.buildings ?? "openStreetMap"
+            }
             onAdvancedLayerPanelChange={onAdvancedLayerPanelChange}
             onLayerSectionToggle={onLayerSectionToggle}
             onPrintLayerToggle={onPrintLayerToggle}

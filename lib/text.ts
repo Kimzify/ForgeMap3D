@@ -26,6 +26,13 @@ export const APP_TEXT = {
     },
   },
   dataSources: {
+    overtureMaps: {
+      attribution:
+        "Buildings: © Overture Maps Foundation and OpenStreetMap contributors",
+      contributors: "Overture Maps Foundation",
+      creditPrefix: "Buildings:",
+      name: "Overture Maps",
+    },
     openStreetMap: {
       attribution: "Data: © OpenStreetMap contributors",
       contributors: "OpenStreetMap contributors",
@@ -52,7 +59,7 @@ export const APP_TEXT = {
       failedWithStatus: (status: number) => `Search failed with ${status}`,
       label: "Search location",
       loading: "Searching",
-      noResults: "No Netherlands results found",
+      noResults: "No locations found",
       placeholder: "Address, postcode, place, lat/lng",
       required: "Enter a location",
     },
@@ -61,7 +68,7 @@ export const APP_TEXT = {
       areaQueryFailure: "Could not query this area",
       buildingPrintModel: "Building 3D map",
       buildingPrintModelDetail:
-        "Fetching 3DBAG buildings and OpenStreetMap layers for this area.",
+        "Fetching building detail and OpenStreetMap layers for this area.",
       checkingArea: "Checking area",
       circleDrawReady: "Circle draw ready",
       hexagonDrawReady: "Hexagon draw ready",
@@ -80,12 +87,12 @@ export const APP_TEXT = {
       exportFailure: "Could not export model",
       exportReady: "Model archive exported",
       exportUnavailable:
-        "The Netherlands model is not ready yet.",
+        "The map model is not ready yet.",
       loadingCesium: "Loading Cesium",
       loadingMapData: "Loading map data",
       loadingPrintModel: "Loading map data",
       noAreaSelected: "No area selected yet",
-      outsideNetherlands: "Outside Netherlands coverage",
+      outsideNetherlands: "Outside supported map bounds",
       preparingExport: "Preparing export",
       printModelFailure: "Could not generate the model",
       printModelReady: "Map model ready",
@@ -137,7 +144,7 @@ export const APP_TEXT = {
     ariaLabel: "3D printing preview",
     errorTitle: "Real data did not load",
     fetchingData:
-      "Fetching OpenStreetMap layers and 3DBAG building detail for the Netherlands.",
+      "Fetching OpenStreetMap layers and available building detail.",
     finalSize: (diameterMm: number, heightMm: number) =>
       `Final size: ${diameterMm} × ${diameterMm} × ${heightMm} mm`,
     loading: "Loading map data",
@@ -168,8 +175,14 @@ export const APP_TEXT = {
         colorLabel: "Buildings color",
         data: "Building data",
         dataHighDetail: "High-detail (survey data)",
+        dataOvertureMaps: "Overture Maps footprints",
+        dataOvertureMapsHelp:
+          "Outside the Netherlands, enriched Overture Maps footprints combine OpenStreetMap with additional open building sources. Heights use available values or estimates.",
+        dataOpenStreetMap: "OpenStreetMap footprints",
+        dataOpenStreetMapHelp:
+          "3DBAG detail is available only in the Netherlands. OpenStreetMap footprints use tagged or estimated building heights.",
         dataHelp:
-          "Real measured Dutch building shapes from 3DBAG. If no 3DBAG mesh is returned, OpenStreetMap building footprints are used with estimated heights inside the Netherlands.",
+          "Real measured Dutch building shapes from 3DBAG. If no 3DBAG mesh is returned, OpenStreetMap building footprints are used with estimated heights.",
         dataWarning:
           "For 3D printing: some high-detail buildings are not perfectly watertight and may need a quick repair in your slicer.",
         heightExaggeration: "Height exaggeration",

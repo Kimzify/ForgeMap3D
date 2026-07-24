@@ -10,6 +10,11 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { APP_CONFIG, type AppConfig } from "@/lib/dataSources";
+import { isInsideNetherlands } from "@/lib/dataSources";
+import {
+  createLocalMetricProjection,
+  maximumRadiusForLocation,
+} from "@/lib/geography";
 import type { PrintableModelData } from "@/lib/printModel";
 import { APP_TEXT } from "@/lib/text";
 import type {
@@ -23,14 +28,12 @@ import {
   selectionDimensions,
   selectionLocalFootprint,
 } from "@/lib/selectionGeometry";
-import { lngLatToRd, rdToLngLat } from "@/lib/rd";
 import TopBar from "@/components/TopBar";
 import {
   CAMERA_MAXIMUM_ZOOM_DISTANCE_METERS,
   CAMERA_MINIMUM_ZOOM_DISTANCE_METERS,
   CAMERA_RESET_DURATION_SECONDS,
   CESIUM_BASE_URL_PATH,
-  LOCATION_SEARCH_DEBOUNCE_MS,
   LOCATION_FOCUS_DURATION_SECONDS,
   LOCATION_SEARCH_CAMERA_HEIGHT_RATIO,
   MAX_RADIUS_METERS,
@@ -74,11 +77,11 @@ const MAP_TEXT = APP_TEXT.mapEditor;
 const MAP_STATUS = APP_TEXT.mapEditor.status;
 const DIAMETER_MULTIPLIER = 2;
 
-function clampRectangleSideMeters(value: number) {
+function clampRectangleSideMeters(value: number, center: SelectionCenter) {
   return clampRadiusMeters(
     value / DIAMETER_MULTIPLIER,
     MIN_RADIUS_METERS,
-    MAX_RADIUS_METERS,
+    maximumRadiusForLocation(center.longitude, center.latitude),
   ) * DIAMETER_MULTIPLIER;
 }
 
@@ -91,7 +94,10 @@ function selectionRadiusMeters(
       Math.max(nextSelection.widthMeters, nextSelection.heightMeters) /
         DIAMETER_MULTIPLIER,
       MIN_RADIUS_METERS,
-      MAX_RADIUS_METERS,
+      maximumRadiusForLocation(
+        nextSelection.longitude,
+        nextSelection.latitude,
+      ),
     );
   }
 
@@ -136,12 +142,15 @@ function rectangleSelectionFromCenterDrag(
   center: SelectionCenter,
   end: SelectionCenter,
 ) {
-  const startRd = lngLatToRd(center.longitude, center.latitude);
-  const endRd = lngLatToRd(end.longitude, end.latitude);
-  const deltaX = endRd.x - startRd.x;
-  const deltaY = endRd.y - startRd.y;
+  const projection = createLocalMetricProjection(
+    center.longitude,
+    center.latitude,
+  );
+  const projectedEnd = projection.project(end.longitude, end.latitude);
   const sideMeters = clampRectangleSideMeters(
-    Math.max(Math.abs(deltaX), Math.abs(deltaY)) * DIAMETER_MULTIPLIER,
+    Math.max(Math.abs(projectedEnd.x), Math.abs(projectedEnd.y)) *
+      DIAMETER_MULTIPLIER,
+    center,
   );
 
   return rectangleSelectionFromCenter(
@@ -152,10 +161,13 @@ function rectangleSelectionFromCenterDrag(
 }
 
 function selectionDistanceMeters(start: SelectionCenter, end: SelectionCenter) {
-  const startRd = lngLatToRd(start.longitude, start.latitude);
-  const endRd = lngLatToRd(end.longitude, end.latitude);
+  const projection = createLocalMetricProjection(
+    start.longitude,
+    start.latitude,
+  );
+  const projectedEnd = projection.project(end.longitude, end.latitude);
 
-  return Math.hypot(endRd.x - startRd.x, endRd.y - startRd.y);
+  return Math.hypot(projectedEnd.x, projectedEnd.y);
 }
 
 function readyStatusForShape(shape: SelectionShape) {
@@ -226,7 +238,6 @@ export default function MapSelectionPage() {
   const activeDrawShapeRef = useRef<SelectionShape | null>(null);
   const wasCameraInputEnabledRef = useRef(true);
   const printModelControllerRef = useRef<AbortController | null>(null);
-  const searchDebounceTimerRef = useRef<number | null>(null);
   const selectedSearchLabelRef = useRef<string | null>(null);
   const searchRequestIdRef = useRef(0);
   const autoGenerateQueryRef = useRef<string | null>(null);
@@ -257,10 +268,17 @@ export default function MapSelectionPage() {
 
   const attribution = useMemo(
     () => ({
+      overtureMaps: config.overtureMaps,
       osm: config.openStreetMap,
+      showOvertureMaps:
+        selection !== null &&
+        !isInsideNetherlands(selection.longitude, selection.latitude),
+      showThreeDbag:
+        selection !== null &&
+        isInsideNetherlands(selection.longitude, selection.latitude),
       threeDbag: config.threeDbag,
     }),
-    [config],
+    [config, selection],
   );
   const selectedLatitude = selection?.latitude ?? null;
   const selectedLongitude = selection?.longitude ?? null;
@@ -314,7 +332,11 @@ export default function MapSelectionPage() {
       );
       const nextRadiusMeters = selectionRadiusMeters(
         nextSelection,
-        radiusMeters,
+        clampRadiusMeters(
+          radiusMeters,
+          MIN_RADIUS_METERS,
+          maximumRadiusForLocation(result.longitude, result.latitude),
+        ),
       );
 
       if (draftRadiusAnimationFrameRef.current !== null) {
@@ -442,33 +464,9 @@ export default function MapSelectionPage() {
   const submitLocationSearch = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (searchDebounceTimerRef.current !== null) {
-        window.clearTimeout(searchDebounceTimerRef.current);
-        searchDebounceTimerRef.current = null;
-      }
       await runLocationSearch(searchQuery, { selectFirst: true });
     },
     [runLocationSearch, searchQuery],
-  );
-
-  const queueLocationSearch = useCallback(
-    (query: string) => {
-      if (searchDebounceTimerRef.current !== null) {
-        window.clearTimeout(searchDebounceTimerRef.current);
-        searchDebounceTimerRef.current = null;
-      }
-
-      const trimmedQuery = query.trim();
-      if (!trimmedQuery || trimmedQuery === selectedSearchLabelRef.current) {
-        return;
-      }
-
-      searchDebounceTimerRef.current = window.setTimeout(() => {
-        searchDebounceTimerRef.current = null;
-        void runLocationSearch(trimmedQuery);
-      }, LOCATION_SEARCH_DEBOUNCE_MS);
-    },
-    [runLocationSearch],
   );
 
   const handleSearchQueryChange = useCallback(
@@ -476,7 +474,6 @@ export default function MapSelectionPage() {
       selectedSearchLabelRef.current = null;
       setSearchQuery(nextQuery);
       setSearchError(null);
-      queueLocationSearch(nextQuery);
 
       if (!nextQuery.trim()) {
         searchRequestIdRef.current += 1;
@@ -485,7 +482,7 @@ export default function MapSelectionPage() {
         setIsSearchPanelOpen(false);
       }
     },
-    [queueLocationSearch],
+    [],
   );
 
   useEffect(() => {
@@ -493,10 +490,6 @@ export default function MapSelectionPage() {
       printModelControllerRef.current?.abort();
       printModelControllerRef.current = null;
 
-      if (searchDebounceTimerRef.current !== null) {
-        window.clearTimeout(searchDebounceTimerRef.current);
-        searchDebounceTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -815,7 +808,7 @@ export default function MapSelectionPage() {
         const nextRadius = clampRadiusMeters(
           selectionDistanceMeters(start, edge),
           MIN_RADIUS_METERS,
-          MAX_RADIUS_METERS,
+          maximumRadiusForLocation(start.longitude, start.latitude),
         );
         queueDraftState(
           {
@@ -1038,7 +1031,7 @@ export default function MapSelectionPage() {
             return new Cesium.PolygonHierarchy([]);
           }
 
-          const centerRd = lngLatToRd(
+          const projection = createLocalMetricProjection(
             currentSelection.longitude,
             currentSelection.latitude,
           );
@@ -1046,10 +1039,7 @@ export default function MapSelectionPage() {
             currentSelection,
             draftRadiusRef.current,
           ).flatMap((point) => {
-            const coordinate = rdToLngLat(
-              centerRd.x + point.x,
-              centerRd.y + point.y,
-            );
+            const coordinate = projection.unproject(point.x, point.y);
 
             return [coordinate.longitude, coordinate.latitude];
           });
@@ -1078,6 +1068,9 @@ export default function MapSelectionPage() {
       ? mapStatus
       : areaStatus;
   const activeToolbarShape = activeDrawShape ?? selectedSelectionShape;
+  const maximumRadiusMeters = selection
+    ? maximumRadiusForLocation(selection.longitude, selection.latitude)
+    : MAX_RADIUS_METERS;
   const toolbarSizeLabel =
     activeToolbarShape === "rectangle" && selection?.shape !== "rectangle"
       ? `${(radiusMeters * DIAMETER_MULTIPLIER).toLocaleString()} ${
@@ -1099,11 +1092,19 @@ export default function MapSelectionPage() {
           isSearchLoading={isSearchLoading}
           isSearchPanelOpen={isSearchPanelOpen}
           mapRef={mapRef}
-          maxRadiusMeters={MAX_RADIUS_METERS}
+          maxRadiusMeters={maximumRadiusMeters}
           minRadiusMeters={MIN_RADIUS_METERS}
           onClearSelection={clearSelection}
           onFocusLocationSearchResult={focusLocationSearchResult}
-          onRadiusMetersChange={setRadiusMeters}
+          onRadiusMetersChange={(nextRadiusMeters) =>
+            setRadiusMeters(
+              clampRadiusMeters(
+                nextRadiusMeters,
+                MIN_RADIUS_METERS,
+                maximumRadiusMeters,
+              ),
+            )
+          }
           onResetCamera={resetCamera}
           onSearchQueryChange={handleSearchQueryChange}
           onShowPrintablePreview={showPrintablePreview}

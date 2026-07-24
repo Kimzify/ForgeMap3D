@@ -1406,6 +1406,18 @@ const PrintableModelPreview = forwardRef<
         try {
           const stl = exporter.parse(slicerExportModel, { binary: true });
           const { mtl, obj } = exportObjWithMtl(slicerExportModel, mtlFileName);
+          const sourceLines = [
+            APP_TEXT.dataSources.openStreetMap.attribution,
+            ...(modelData.sources?.overtureMaps
+              ? [APP_TEXT.dataSources.overtureMaps.attribution]
+              : []),
+            ...(modelData.sources?.threeDbag
+              ? [APP_TEXT.dataSources.threeDbag.attribution]
+              : []),
+            "",
+            `Generated: ${modelData.generatedAt}`,
+            `Center: ${selection.latitude.toFixed(7)}, ${selection.longitude.toFixed(7)}`,
+          ];
           const archive = createZip([
             {
               data: bytesFromExport(stl),
@@ -1418,6 +1430,10 @@ const PrintableModelPreview = forwardRef<
             {
               data: stringToBytes(mtl),
               name: mtlFileName,
+            },
+            {
+              data: stringToBytes(sourceLines.join("\n")),
+              name: "SOURCES.txt",
             },
           ]);
           const blob = new Blob([archive], { type: "application/zip" });

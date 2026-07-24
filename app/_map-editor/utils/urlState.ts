@@ -1,6 +1,9 @@
 import type { MapSelection, SelectionShape } from "@/lib/mapTypes";
 import { selectionShape } from "@/lib/mapTypes";
-import { isInsideNetherlands } from "@/lib/dataSources";
+import {
+  isSupportedLocation,
+  maximumRadiusForLocation,
+} from "@/lib/geography";
 import {
   COORDINATE_QUERY_DECIMAL_PLACES,
   DEFAULT_RADIUS_METERS,
@@ -104,18 +107,22 @@ export function getMapEditorRouteState(
     readNumberParam(searchParams, HEIGHT_PARAM),
   );
   const sideMeters = Math.max(widthMeters, heightMeters);
+  const locationMaximumRadius =
+    latitude === null || longitude === null
+      ? MAX_RADIUS_METERS
+      : maximumRadiusForLocation(longitude, latitude);
   const radiusMeters =
     shape === "rectangle"
       ? clampRadiusMeters(
           sideMeters / DIAMETER_MULTIPLIER,
           MIN_RADIUS_METERS,
-          MAX_RADIUS_METERS,
+          locationMaximumRadius,
         )
-      : clampRadiusMeters(radius, MIN_RADIUS_METERS, MAX_RADIUS_METERS);
+      : clampRadiusMeters(radius, MIN_RADIUS_METERS, locationMaximumRadius);
   const selection =
     latitude === null ||
     longitude === null ||
-    !isInsideNetherlands(longitude, latitude)
+    !isSupportedLocation(longitude, latitude)
       ? null
       : shape === "rectangle"
         ? {

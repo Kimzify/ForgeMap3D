@@ -68,6 +68,12 @@ const dataSources = loadTypeScriptModule(
 const urlState = loadTypeScriptModule(
   path.join(projectRoot, "app/_map-editor/utils/urlState.ts"),
 );
+const geography = loadTypeScriptModule(
+  path.join(projectRoot, "lib/geography.ts"),
+);
+const osmLandCover = loadTypeScriptModule(
+  path.join(projectRoot, "lib/osmLandCover.ts"),
+);
 
 assert.equal(
   dataSources.isInsideNetherlands(4.8869109, 52.3711258),
@@ -78,6 +84,39 @@ assert.equal(
   dataSources.isInsideNetherlands(-0.1395703, 51.4891908),
   false,
   "London coordinates should be outside the supported scope.",
+);
+assert.equal(
+  dataSources.buildingSourceForLocation(51.3401616, 35.761063),
+  "overtureMaps",
+  "Foreign locations should use Overture's enriched building footprints.",
+);
+assert.equal(
+  dataSources.buildingSourceForLocation(4.8869109, 52.3711258),
+  "threeDbag",
+  "Dutch locations should keep using 3DBAG building meshes.",
+);
+assert.equal(
+  osmLandCover.osmLandCoverKind({ leisure: "park" }),
+  "park",
+  "OSM parks should be classified as printable green space.",
+);
+assert.equal(
+  osmLandCover.osmLandCoverKind({ leisure: "garden" }),
+  "garden",
+  "OSM gardens should be classified as printable green space.",
+);
+assert.match(
+  osmLandCover.osmLandCoverQuery(
+    {
+      east: 51.3467263,
+      north: 35.76639,
+      south: 35.755736,
+      west: 51.3335969,
+    },
+    20,
+  ),
+  /way\["leisure"~"park\|garden\|nature_reserve"\]/,
+  "The land-cover query should request parks, gardens, and nature reserves.",
 );
 
 const dutchRouteState = urlState.getMapEditorRouteState(
@@ -91,15 +130,44 @@ assert.ok(
 const outsideRouteState = urlState.getMapEditorRouteState(
   new URLSearchParams("lat=51.4891908&lng=-0.1395703&radius=746&generate=1"),
 );
-assert.equal(
+assert.ok(
   outsideRouteState.selection,
-  null,
-  "Outside-Netherlands coordinates should not create a selectable area.",
+  "Outside-Netherlands coordinates should create a selectable OSM area.",
 );
 assert.equal(
   outsideRouteState.shouldAutoGeneratePrintModel,
   true,
-  "The route parser should preserve the generate flag while rejecting the selection.",
+  "The route parser should preserve the generate flag for worldwide selections.",
 );
 
-console.log("Netherlands-only scope checks passed.");
+const cappedOutsideRouteState = urlState.getMapEditorRouteState(
+  new URLSearchParams("lat=35.6764&lng=139.65&radius=5000"),
+);
+assert.equal(
+  cappedOutsideRouteState.radiusMeters,
+  2000,
+  "OSM-only selections should be capped at a 2 km radius.",
+);
+
+const polarRouteState = urlState.getMapEditorRouteState(
+  new URLSearchParams("lat=89&lng=0&radius=500"),
+);
+assert.equal(
+  polarRouteState.selection,
+  null,
+  "Locations outside Web Mercator bounds should be rejected.",
+);
+
+const projection = geography.createLocalMetricProjection(-0.1395703, 51.4891908);
+const projectedCenter = projection.project(-0.1395703, 51.4891908);
+assert.ok(Math.abs(projectedCenter.x) < 1e-8);
+assert.ok(Math.abs(projectedCenter.y) < 1e-8);
+const roundTrip = projection.unproject(1000, -750);
+const projectedRoundTrip = projection.project(
+  roundTrip.longitude,
+  roundTrip.latitude,
+);
+assert.ok(Math.abs(projectedRoundTrip.x - 1000) < 1e-6);
+assert.ok(Math.abs(projectedRoundTrip.y + 750) < 1e-6);
+
+console.log("Worldwide scope checks passed.");

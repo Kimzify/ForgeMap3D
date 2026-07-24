@@ -14,6 +14,7 @@ import type {
 export type LayerSettingsPanelProps = {
   actions: PrintSettingsActions;
   buildingHeightMetrics: BuildingHeightMetrics;
+  buildingSource: "openStreetMap" | "overtureMaps" | "threeDbag";
   onAdvancedLayerPanelChange: (panel: AdvancedLayerPanel) => void;
   onLayerSectionToggle: (key: LayerSettingsSectionKey) => void;
   onPrintLayerToggle: (key: PrintableLayerKey) => void;

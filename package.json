@@ -1,14 +1,14 @@
 {
   "name": "forgemap3d",
   "version": "0.1.0",
-  "description": "A printable 3D map editor for the Netherlands using OpenStreetMap and 3DBAG.",
+  "description": "A worldwide printable 3D map editor using OpenStreetMap, Overture Maps, and detailed 3DBAG data in the Netherlands.",
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/check-line-prism-boundary.mjs && node scripts/check-building-boundary.mjs && node scripts/check-water-visibility.mjs && node scripts/check-land-cover-stability.mjs && node scripts/check-netherlands-scope.mjs && node scripts/check-export-orientation.mjs && node scripts/check-export-loading-yield.mjs",
+    "test": "node scripts/check-line-prism-boundary.mjs && node scripts/check-building-boundary.mjs && node scripts/check-water-visibility.mjs && node scripts/check-land-cover-stability.mjs && node scripts/check-worldwide-scope.mjs && node scripts/check-export-orientation.mjs && node scripts/check-export-loading-yield.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
     "postinstall": "node scripts/copy-cesium-assets.mjs"
   },
@@ -26,9 +26,12 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
     "cesium": "^1.143.0",
     "lucide-react": "^1.25.0",
     "next": "^16.2.11",
+    "pbf": "^5.1.2",
+    "pmtiles": "^4.4.1",
     "polygon-clipping": "^0.15.7",
     "proj4": "^2.20.9",
     "react": "^19.2.8",

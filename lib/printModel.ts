@@ -10,7 +10,10 @@ export type PrintableLayers = Record<PrintableLayerKey, boolean>;
 
 export type PrintableFrameStyle = "square" | "rounded";
 export type PrintableRenderMode = "surface" | "extruded";
-export type PrintableBuildingData = "highDetail";
+export type PrintableBuildingData =
+  | "highDetail"
+  | "openStreetMap"
+  | "overtureMaps";
 export type PrintableRoadCategoryKey =
   | "highways"
   | "mainStreets"
@@ -166,6 +169,12 @@ export type PrintableModelData = {
     osmElements: number;
     roads: number;
     water: number;
+  };
+  sources: {
+    buildings: "openStreetMap" | "overtureMaps" | "threeDbag";
+    openStreetMap: true;
+    overtureMaps: boolean;
+    threeDbag: boolean;
   };
   warnings: string[];
   water: PrintablePolygon[];
@@ -743,7 +752,7 @@ export function getPrintableRoadCategory(line: PrintableLine) {
 export function inferPrintableLandCoverCategory(
   kind: string,
 ): PrintableLandCoverCategoryKey {
-  if (["forest", "wood", "scrub", "heath"].includes(kind)) {
+  if (["forest", "wood", "trees", "scrub", "heath"].includes(kind)) {
     return "forest";
   }
 

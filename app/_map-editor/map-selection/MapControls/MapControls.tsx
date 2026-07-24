@@ -54,7 +54,6 @@ export default function MapControls({
     <div className={styles.controls} aria-busy={isPrintModelGenerating}>
       <div className={styles.search}>
         <form className={styles.searchForm} onSubmit={onSubmitLocationSearch}>
-          <Search aria-hidden="true" size={ICON_SIZES.SEARCH} />
           <input
             aria-label={MAP_TEXT.search.label}
             autoComplete="off"
@@ -64,6 +63,14 @@ export default function MapControls({
             type="search"
             value={searchQuery}
           />
+          <button
+            aria-label={APP_TEXT.common.buttons.search}
+            className={styles.searchSubmit}
+            disabled={isEditingDisabled || isSearchLoading}
+            type="submit"
+          >
+            <Search aria-hidden="true" size={ICON_SIZES.SEARCH} />
+          </button>
         </form>
         {isSearchPanelOpen ? (
           <div className={styles.searchResults}>
