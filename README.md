@@ -23,9 +23,9 @@ geometry where available.
 
 ## Preview
 
-[![Watch the Forge Map 3D workflow](docs/assets/forge-map-3d-workflow.jpg)](docs/assets/forge-map-3d-workflow.mp4)
+![Forge Map 3D workflow](docs/assets/forge-map-3d-workflow.webp)
 
-Click the preview to watch the full workflow video.
+[Download the full workflow video (MP4)](https://raw.githubusercontent.com/Kimzify/ForgeMap3D/main/docs/assets/forge-map-3d-workflow.mp4).
 
 ## Requirements
 
