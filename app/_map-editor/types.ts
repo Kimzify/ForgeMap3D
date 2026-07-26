@@ -5,11 +5,17 @@ import type {
   PrintableModelSettings,
   PrintableRoadCategoryKey,
   PrintableRoadSettings,
+  PrintableTerrainSettings,
 } from "@/lib/printModel";
 
 export type PrintTab = "model" | "layers";
 export type ModelSettingsSectionKey = "dimensions" | "frame";
-export type LayerSettingsSectionKey = "buildings" | "roads" | "water" | "landCover";
+export type LayerSettingsSectionKey =
+  | "buildings"
+  | "roads"
+  | "terrain"
+  | "water"
+  | "landCover";
 export type AdvancedLayerPanel = "roads" | "landCover";
 
 export type LocationSearchResult = {
@@ -26,8 +32,10 @@ export type LocationSearchOptions = {
 };
 
 export type MapAttribution = {
+  openTopoData: AppConfig["openTopoData"];
   overtureMaps: AppConfig["overtureMaps"];
   osm: AppConfig["openStreetMap"];
+  showOpenTopoData: boolean;
   showOvertureMaps: boolean;
   showThreeDbag: boolean;
   threeDbag: AppConfig["threeDbag"];
@@ -76,6 +84,7 @@ export type PrintSettingsActions = {
     updates: Partial<PrintableRoadSettings["categories"][PrintableRoadCategoryKey]>,
   ) => void;
   updateRoadSettings: (updates: Partial<PrintableRoadSettings>) => void;
+  updateTerrainSettings: (updates: Partial<PrintableTerrainSettings>) => void;
   updateWaterSettings: (
     updates: Partial<PrintableModelSettings["layers"]["water"]>,
   ) => void;

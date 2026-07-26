@@ -9,8 +9,12 @@ import {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { APP_CONFIG, type AppConfig } from "@/lib/dataSources";
-import { isInsideNetherlands } from "@/lib/dataSources";
+import {
+  APP_CONFIG,
+  isInsideNetherlands,
+  isInsideSrtmLatitudeCoverage,
+  type AppConfig,
+} from "@/lib/dataSources";
 import {
   createLocalMetricProjection,
   maximumRadiusForLocation,
@@ -268,8 +272,11 @@ export default function MapSelectionPage() {
 
   const attribution = useMemo(
     () => ({
+      openTopoData: config.openTopoData,
       overtureMaps: config.overtureMaps,
       osm: config.openStreetMap,
+      showOpenTopoData:
+        selection !== null && isInsideSrtmLatitudeCoverage(selection.latitude),
       showOvertureMaps:
         selection !== null &&
         !isInsideNetherlands(selection.longitude, selection.latitude),

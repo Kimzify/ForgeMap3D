@@ -3,6 +3,7 @@ import { APP_TEXT } from "./text";
 export type PrintableLayerKey =
   | "buildings"
   | "roads"
+  | "terrain"
   | "water"
   | "landCover";
 
@@ -114,10 +115,16 @@ export type PrintableLandCoverSettings = {
   verticalOffsetMm: number;
 };
 
+export type PrintableTerrainSettings = {
+  color: string;
+  verticalExaggeration: number;
+};
+
 export type PrintableLayerSettings = {
   buildings: PrintableBuildingSettings;
   landCover: PrintableLandCoverSettings;
   roads: PrintableRoadSettings;
+  terrain: PrintableTerrainSettings;
   water: PrintableWaterSettings;
 };
 
@@ -156,6 +163,19 @@ export type PrintablePolygon = {
   points: ModelPoint[];
 };
 
+export type PrintableTerrainData = {
+  attribution: string;
+  columns: number;
+  elevations: number[];
+  maxElevationMeters: number;
+  minElevationMeters: number;
+  minX: number;
+  minY: number;
+  rows: number;
+  source: "opentopodata-srtm30m";
+  spacingMeters: number;
+};
+
 export type PrintableModelData = {
   buildings: PrintableBuilding[];
   generatedAt: string;
@@ -174,8 +194,10 @@ export type PrintableModelData = {
     buildings: "openStreetMap" | "overtureMaps" | "threeDbag";
     openStreetMap: true;
     overtureMaps: boolean;
+    terrain: boolean;
     threeDbag: boolean;
   };
+  terrain: PrintableTerrainData | null;
   warnings: string[];
   water: PrintablePolygon[];
   waterLines: PrintableLine[];
@@ -184,6 +206,7 @@ export type PrintableModelData = {
 export const DEFAULT_PRINTABLE_LAYERS: PrintableLayers = {
   buildings: true,
   roads: true,
+  terrain: true,
   water: true,
   landCover: true,
 };
@@ -208,6 +231,7 @@ export const PRINTABLE_LAYER_LIMITS = {
   roadExtrudedHeightMm: { max: 10, min: 0, step: 0.05 },
   roadWidthMm: { max: 5, min: 0.05, step: 0.01 },
   roadWidthScale: { max: 2, min: 0.1, step: 0.05 },
+  terrainVerticalExaggeration: { max: 6, min: 0.1, step: 0.1 },
   waterExtrudedHeightMm: { max: 10, min: 0, step: 0.05 },
   waterMinimumAreaMm2: { max: 10, min: 0, step: 0.01 },
   waterMinimumWidthMm: { max: 5, min: 0, step: 0.05 },
@@ -383,8 +407,11 @@ const PRINTABLE_DEFAULT_COLORS = {
     sidewalks: "#8b949c",
     tunnels: "#6d747c",
   },
+  terrain: "#aaa59d",
   water: "#58a8c7",
 } as const;
+
+const DEFAULT_EXTRUDED_HEIGHT_MM = 0.2;
 
 function createDefaultRoadCategorySettings() {
   const entries: Array<[PrintableRoadCategoryKey, PrintableRoadCategorySettings]> = [
@@ -393,7 +420,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.highways,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 1.12,
       },
@@ -403,7 +430,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.mainStreets,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.7,
       },
@@ -413,7 +440,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.localStreets,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.45,
       },
@@ -423,7 +450,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.alleysService,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.25,
       },
@@ -433,7 +460,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.pedestrianCycle,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.15,
       },
@@ -443,7 +470,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.railways,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.4,
       },
@@ -453,7 +480,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.ferries,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.4,
       },
@@ -463,7 +490,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.tunnels,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.5,
       },
@@ -473,7 +500,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.bridges,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.7,
       },
@@ -483,7 +510,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.sidewalks,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.15,
       },
@@ -493,7 +520,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.crosswalks,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.15,
       },
@@ -503,7 +530,7 @@ function createDefaultRoadCategorySettings() {
       {
         color: PRINTABLE_DEFAULT_COLORS.roads.parkingDriveways,
         enabled: true,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         widthMm: 0.25,
       },
@@ -527,7 +554,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.forest,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -538,7 +565,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.grass,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -549,7 +576,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.farmland,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -560,7 +587,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.wetland,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -571,7 +598,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.sand,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -582,7 +609,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.ice,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -593,7 +620,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.rock,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -604,7 +631,7 @@ function createDefaultLandCoverCategorySettings() {
         carveIntoTerrain: true,
         color: PRINTABLE_DEFAULT_COLORS.landCover.urban,
         enabled: true,
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
       },
     ],
@@ -636,7 +663,7 @@ export function createDefaultPrintableModelSettings(): PrintableModelSettings {
       buildings: {
         color: PRINTABLE_DEFAULT_COLORS.buildings,
         data: "highDetail",
-        heightExaggeration: 2.5,
+        heightExaggeration: 1,
         showEdges: false,
         verticalOffsetMm: 0,
       },
@@ -644,7 +671,7 @@ export function createDefaultPrintableModelSettings(): PrintableModelSettings {
         carveDepthMm: 0.01,
         carveIntoTerrain: true,
         categories: createDefaultLandCoverCategorySettings(),
-        extrudedHeightMm: 1.6,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         opacity: 1,
         renderMode: "extruded",
         verticalOffsetMm: 0.01,
@@ -652,15 +679,19 @@ export function createDefaultPrintableModelSettings(): PrintableModelSettings {
       roads: {
         categories: createDefaultRoadCategorySettings(),
         color: PRINTABLE_DEFAULT_COLORS.roads.mainStreets,
-        extrudedHeightMm: 2,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         renderMode: "extruded",
         showComputedWidths: true,
         verticalOffsetMm: 0.1,
         widthScale: 0.8,
       },
+      terrain: {
+        color: PRINTABLE_DEFAULT_COLORS.terrain,
+        verticalExaggeration: 1,
+      },
       water: {
         color: PRINTABLE_DEFAULT_COLORS.water,
-        extrudedHeightMm: 1,
+        extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         hideSmallWaterBodies: true,
         minimumAreaMm2: 0.13,
         minimumWidthMm: 0.5,

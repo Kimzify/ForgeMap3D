@@ -14,6 +14,15 @@ export const DATA_SOURCES = {
     copyrightUrl: "https://www.openstreetmap.org/copyright",
     tilePolicyUrl: "https://operations.osmfoundation.org/policies/tiles/",
   },
+  openTopoData: {
+    name: APP_TEXT.dataSources.openTopoData.name,
+    datasetName: APP_TEXT.dataSources.openTopoData.dataName,
+    apiBaseUrl: "https://api.opentopodata.org/v1/srtm30m",
+    attribution: APP_TEXT.dataSources.openTopoData.attribution,
+    attributionUrl: "https://www.opentopodata.org/datasets/srtm/",
+    licenseUrl:
+      "https://www.usgs.gov/centers/eros/science/usgs-eros-archive-digital-elevation-shuttle-radar-topography-mission-srtm",
+  },
   threeDbag: {
     name: APP_TEXT.dataSources.threeDbag.name,
     apiBaseUrl: "https://api.3dbag.nl",
@@ -27,6 +36,9 @@ export const DATA_SOURCES = {
     },
   },
 } as const;
+
+const SRTM_MIN_LATITUDE = -60;
+const SRTM_MAX_LATITUDE = 60;
 
 export const NETHERLANDS_VIEW = {
   center: {
@@ -68,9 +80,18 @@ export function buildingSourceForLocation(
     : "overtureMaps";
 }
 
+export function isInsideSrtmLatitudeCoverage(latitude: number) {
+  return latitude >= SRTM_MIN_LATITUDE && latitude <= SRTM_MAX_LATITUDE;
+}
+
+export function intersectsSrtmLatitudeCoverage(south: number, north: number) {
+  return south <= SRTM_MAX_LATITUDE && north >= SRTM_MIN_LATITUDE;
+}
+
 export type AppConfig = {
   overtureMaps: typeof DATA_SOURCES.overtureMaps;
   openStreetMap: typeof DATA_SOURCES.openStreetMap;
+  openTopoData: typeof DATA_SOURCES.openTopoData;
   threeDbag: typeof DATA_SOURCES.threeDbag;
   view: typeof NETHERLANDS_VIEW;
 };
@@ -78,6 +99,7 @@ export type AppConfig = {
 export const APP_CONFIG: AppConfig = {
   overtureMaps: DATA_SOURCES.overtureMaps,
   openStreetMap: DATA_SOURCES.openStreetMap,
+  openTopoData: DATA_SOURCES.openTopoData,
   threeDbag: DATA_SOURCES.threeDbag,
   view: NETHERLANDS_VIEW,
 };
