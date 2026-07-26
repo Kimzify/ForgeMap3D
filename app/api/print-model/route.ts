@@ -1,5 +1,10 @@
 import { gunzipSync } from "node:zlib";
-import { isInsideNetherlands, NETHERLANDS_VIEW } from "@/lib/dataSources";
+import {
+  DATA_SOURCES,
+  intersectsSrtmLatitudeCoverage,
+  isInsideNetherlands,
+  NETHERLANDS_VIEW,
+} from "@/lib/dataSources";
 import {
   createLocalMetricProjection,
   crossesInternationalDateLine,
@@ -35,6 +40,7 @@ import {
   type PrintableLine,
   type PrintableModelData,
   type PrintablePolygon,
+  type PrintableTerrainData,
 } from "@/lib/printModel";
 import { clamp, lngLatToRd, rdToLngLat } from "@/lib/rd";
 import {
@@ -74,6 +80,15 @@ const OSM_BUILDING_MIN_HEIGHT_METERS = 2.5;
 const OSM_WATERWAY_MAX_WIDTH_METERS = 100;
 const OSM_WATERWAY_MIN_WIDTH_METERS = 0.5;
 const OVERTURE_BUILDING_LIMIT = 4000;
+const TERRAIN_API_URL = "https://api.opentopodata.org/v1/srtm30m";
+const TERRAIN_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const TERRAIN_CACHE_MAX_ENTRIES = 30;
+const TERRAIN_GRID_SIZE = 19;
+const TERRAIN_MAX_LOCATIONS_PER_REQUEST = 100;
+const TERRAIN_REQUEST_SPACING_MS = 1050;
+const TERRAIN_SOURCE_ATTRIBUTION =
+  DATA_SOURCES.openTopoData.attribution;
+const TERRAIN_TIMEOUT_MS = 14000;
 
 type OsmCacheEntry = {
   expiresAt: number;
@@ -91,6 +106,10 @@ type WgsBbox = {
 type PointProjector = OsmPointProjector;
 
 const osmCache = new Map<string, OsmCacheEntry>();
+const terrainCache = new Map<
+  string,
+  { expiresAt: number; terrain: PrintableTerrainData }
+>();
 
 type WfsGeometry = {
   coordinates?: unknown;
@@ -138,6 +157,19 @@ type OsmElement = OsmWaterElement;
 
 type OsmResponse = {
   elements?: OsmElement[];
+};
+
+type OpenTopoDataResponse = {
+  error?: string;
+  results?: Array<{
+    dataset?: string;
+    elevation?: number | null;
+    location?: {
+      lat?: number;
+      lng?: number;
+    };
+  }>;
+  status?: string;
 };
 
 function parseNumber(searchParams: URLSearchParams, key: string) {
@@ -717,6 +749,24 @@ function osmCacheKey(bbox: WgsBbox) {
   ].join(",");
 }
 
+function terrainCacheKey(
+  longitude: number,
+  latitude: number,
+  bounds: { maxX: number; maxY: number; minX: number; minY: number },
+  shape: SelectionShape,
+) {
+  return [
+    "v1",
+    shape,
+    longitude.toFixed(6),
+    latitude.toFixed(6),
+    bounds.minX.toFixed(1),
+    bounds.minY.toFixed(1),
+    bounds.maxX.toFixed(1),
+    bounds.maxY.toFixed(1),
+  ].join(",");
+}
+
 function trimOsmCache(now = Date.now()) {
   for (const [key, entry] of osmCache) {
     if (entry.staleUntil <= now) {
@@ -731,6 +781,23 @@ function trimOsmCache(now = Date.now()) {
     }
 
     osmCache.delete(oldestKey);
+  }
+}
+
+function trimTerrainCache(now = Date.now()) {
+  for (const [key, entry] of terrainCache) {
+    if (entry.expiresAt <= now) {
+      terrainCache.delete(key);
+    }
+  }
+
+  while (terrainCache.size > TERRAIN_CACHE_MAX_ENTRIES) {
+    const oldestKey = terrainCache.keys().next().value;
+    if (!oldestKey) {
+      return;
+    }
+
+    terrainCache.delete(oldestKey);
   }
 }
 
@@ -913,6 +980,166 @@ async function fetchOsm(bbox: WgsBbox, signal: AbortSignal) {
     elements,
     warnings,
   };
+}
+
+function filledElevations(values: Array<number | null>) {
+  const finite = values.filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value),
+  );
+  if (finite.length === 0) {
+    return null;
+  }
+
+  const fallback = finite.reduce((sum, value) => sum + value, 0) / finite.length;
+  return values.map((value) =>
+    typeof value === "number" && Number.isFinite(value) ? value : fallback,
+  );
+}
+
+function smoothElevationGrid(elevations: number[], rows: number, columns: number) {
+  return elevations.map((value, index) => {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    let sum = 0;
+    let count = 0;
+
+    for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
+      for (let columnOffset = -1; columnOffset <= 1; columnOffset += 1) {
+        const sampleRow = row + rowOffset;
+        const sampleColumn = column + columnOffset;
+        if (
+          sampleRow < 0 ||
+          sampleRow >= rows ||
+          sampleColumn < 0 ||
+          sampleColumn >= columns
+        ) {
+          continue;
+        }
+
+        const weight = rowOffset === 0 && columnOffset === 0 ? 4 : 1;
+        sum += elevations[sampleRow * columns + sampleColumn] * weight;
+        count += weight;
+      }
+    }
+
+    return count > 0 ? sum / count : value;
+  });
+}
+
+function terrainRequestDelay() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, TERRAIN_REQUEST_SPACING_MS);
+  });
+}
+
+async function fetchOpenTopoDataLocations(
+  locations: string[],
+  signal: AbortSignal,
+) {
+  const url = new URL(TERRAIN_API_URL);
+  url.searchParams.set("locations", locations.join("|"));
+  url.searchParams.set("interpolation", "bilinear");
+  url.searchParams.set("nodata_value", "null");
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "forgemap3d/1.0",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Open Topo Data returned ${response.status}`);
+  }
+
+  const payload = (await response.json()) as OpenTopoDataResponse;
+  if (payload.status !== "OK") {
+    throw new Error(payload.error ?? "Open Topo Data terrain lookup failed.");
+  }
+
+  return payload.results ?? [];
+}
+
+async function fetchOpenTopoDataTerrain(
+  longitude: number,
+  latitude: number,
+  bounds: { maxX: number; maxY: number; minX: number; minY: number },
+  shape: SelectionShape,
+  projection: ReturnType<typeof createLocalMetricProjection>,
+  signal: AbortSignal,
+): Promise<PrintableTerrainData | null> {
+  const cacheKey = terrainCacheKey(longitude, latitude, bounds, shape);
+  const now = Date.now();
+  trimTerrainCache(now);
+  const cached = terrainCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.terrain;
+  }
+
+  const rows = TERRAIN_GRID_SIZE;
+  const columns = TERRAIN_GRID_SIZE;
+  const spacingMeters =
+    Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) /
+    Math.max(TERRAIN_GRID_SIZE - 1, 1);
+  const locations: string[] = [];
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const x = bounds.minX + column * spacingMeters;
+      const y = bounds.minY + row * spacingMeters;
+      const point = projection.unproject(x, y);
+      locations.push(`${point.latitude.toFixed(7)},${point.longitude.toFixed(7)}`);
+    }
+  }
+
+  const results: NonNullable<OpenTopoDataResponse["results"]> = [];
+  for (
+    let index = 0;
+    index < locations.length;
+    index += TERRAIN_MAX_LOCATIONS_PER_REQUEST
+  ) {
+    if (index > 0) {
+      await terrainRequestDelay();
+    }
+
+    results.push(
+      ...(await fetchOpenTopoDataLocations(
+        locations.slice(index, index + TERRAIN_MAX_LOCATIONS_PER_REQUEST),
+        signal,
+      )),
+    );
+  }
+
+  const filled = filledElevations(
+    results.map((result) => result.elevation ?? null),
+  );
+  if (!filled || filled.length !== rows * columns) {
+    return null;
+  }
+
+  const elevations = smoothElevationGrid(filled, rows, columns);
+  const terrain: PrintableTerrainData = {
+    attribution: TERRAIN_SOURCE_ATTRIBUTION,
+    columns,
+    elevations,
+    maxElevationMeters: Math.max(...elevations),
+    minElevationMeters: Math.min(...elevations),
+    minX: bounds.minX,
+    minY: bounds.minY,
+    rows,
+    source: "opentopodata-srtm30m",
+    spacingMeters,
+  };
+
+  terrainCache.set(cacheKey, {
+    expiresAt: now + TERRAIN_CACHE_TTL_MS,
+    terrain,
+  });
+  trimTerrainCache(now);
+
+  return terrain;
 }
 
 function localOsmPoints(element: OsmElement, projectPoint: PointProjector) {
@@ -1314,6 +1541,7 @@ export async function GET(request: Request) {
   const threeDbagSignal = AbortSignal.timeout(43000);
   const osmSignal = AbortSignal.timeout(OVERPASS_TOTAL_TIMEOUT_MS);
   const overtureSignal = AbortSignal.timeout(30000);
+  const terrainSignal = AbortSignal.timeout(TERRAIN_TIMEOUT_MS);
   const threeDbagRequest =
     useThreeDbag && threeDbagBbox
       ? fetchThreeDbagTileIndex(threeDbagBbox, threeDbagSignal).then(
@@ -1346,14 +1574,39 @@ export async function GET(request: Request) {
           reason: error,
         }),
       );
-  const [threeDbagResult, osmResult, overtureResult] = await Promise.all([
-    threeDbagRequest,
-    fetchOsm(osmBbox, osmSignal).then(
-      (osm) => ({ status: "fulfilled" as const, value: osm }),
-      (error: unknown) => ({ status: "rejected" as const, reason: error }),
-    ),
-    overtureRequest,
-  ]);
+  const terrainRequest =
+    intersectsSrtmLatitudeCoverage(osmBbox.south, osmBbox.north)
+      ? fetchOpenTopoDataTerrain(
+          longitude,
+          latitude,
+          bounds,
+          shape,
+          localProjection,
+          terrainSignal,
+        ).then(
+          (terrain) => ({
+            status: "fulfilled" as const,
+            value: terrain,
+          }),
+          (error: unknown) => ({
+            status: "rejected" as const,
+            reason: error,
+          }),
+        )
+      : Promise.resolve({
+          status: "fulfilled" as const,
+          value: null,
+        });
+  const [threeDbagResult, osmResult, overtureResult, terrainResult] =
+    await Promise.all([
+      threeDbagRequest,
+      fetchOsm(osmBbox, osmSignal).then(
+        (osm) => ({ status: "fulfilled" as const, value: osm }),
+        (error: unknown) => ({ status: "rejected" as const, reason: error }),
+      ),
+      overtureRequest,
+      terrainRequest,
+    ]);
 
   const cityJsonTiles: CityJsonTile[] = [];
   let cityJsonTileCount = 0;
@@ -1428,6 +1681,19 @@ export async function GET(request: Request) {
       }`,
     );
   }
+  const terrain =
+    terrainResult.status === "fulfilled" ? terrainResult.value : null;
+  if (terrainResult.status === "rejected") {
+    warnings.push(
+      `Terrain relief failed: ${
+        errorMessage(terrainResult.reason) ?? "elevation data failed to load."
+      } Export will use flat terrain.`,
+    );
+  } else if (!terrain) {
+    warnings.push(
+      "Terrain relief unavailable for this area; export will use flat terrain.",
+    );
+  }
   const threeDbagBuildings =
     useThreeDbag && centerRd
       ? extractBuildingsFromCityJsonTiles(cityJsonTiles, centerRd, boundary)
@@ -1481,8 +1747,10 @@ export async function GET(request: Request) {
             : "openStreetMap",
       openStreetMap: true,
       overtureMaps: shouldUseOvertureBuildings,
+      terrain: Boolean(terrain),
       threeDbag: useThreeDbag && threeDbagBuildings.length > 0,
     },
+    terrain,
     warnings,
     water: osmLayers.water,
     waterLines: osmLayers.waterLines,

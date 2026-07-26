@@ -104,6 +104,8 @@ const INITIAL_ANIMATION_FRAME = 0;
 const BASE_MATERIAL_COLOR = "#f3ead1";
 const TERRAIN_SURFACE_COLOR = "#fff8df";
 const CIRCLE_GEOMETRY_SEGMENTS = 256;
+const DRAPED_LAND_COVER_CLEARANCE_MM = 0.35;
+const TERRAIN_RADIAL_RINGS = 20;
 
 function createPreviewView(size: PrintableSize): PreviewView {
   const viewRadius = Math.max(
@@ -215,28 +217,51 @@ function maxBuildingHeightMeters(modelData: PrintableModelData | null) {
   return maxHeight;
 }
 
+function activeTerrainData(input: ModelInput) {
+  return input.layers.terrain ? input.modelData?.terrain ?? null : null;
+}
+
+function terrainReliefMeters(input: ModelInput) {
+  const terrain = activeTerrainData(input);
+  if (!terrain) {
+    return 0;
+  }
+
+  return Math.max(terrain.maxElevationMeters - terrain.minElevationMeters, 0);
+}
+
 function createModelMetrics(input: ModelInput): ModelMetrics {
   const terrainRadiusMm = input.size.mapSideMm / 2;
   const totalRadiusMm = input.size.totalSideMm / 2;
   const horizontalScale = modelScale(input.radiusMeters, terrainRadiusMm);
-  const autoVerticalScale =
+  const autoBuildingVerticalScale =
     horizontalScale * input.modelSettings.layers.buildings.heightExaggeration;
+  const autoTerrainVerticalScale =
+    horizontalScale * input.modelSettings.layers.terrain.verticalExaggeration;
   const lockedHeightMm = Math.max(input.size.heightMm - input.size.baseHeightMm, 1);
   const maxHeightMeters = maxBuildingHeightMeters(input.modelData);
-  const verticalScale =
-    input.modelSettings.dimensions.lockModelHeight && maxHeightMeters > 0
-      ? lockedHeightMm / maxHeightMeters
-      : autoVerticalScale;
+  const terrainHeightMeters = terrainReliefMeters(input);
+  const autoMaxHeightMm =
+    terrainHeightMeters * autoTerrainVerticalScale +
+    maxHeightMeters * autoBuildingVerticalScale;
+  const lockedScaleFactor =
+    input.modelSettings.dimensions.lockModelHeight && autoMaxHeightMm > 0
+      ? lockedHeightMm / autoMaxHeightMm
+      : 1;
+  const buildingVerticalScale = autoBuildingVerticalScale * lockedScaleFactor;
+  const terrainVerticalScale = autoTerrainVerticalScale * lockedScaleFactor;
 
   return {
     baseHeightMm: input.size.baseHeightMm,
+    buildingVerticalScale,
     frameHeightMm: input.size.frameHeightMm,
     frameWidthMm: input.size.frameWidthMm,
     horizontalScale,
     surfaceY: input.size.baseHeightMm,
+    terrainVerticalScale,
     terrainRadiusMm,
     totalRadiusMm,
-    verticalScale,
+    verticalScale: buildingVerticalScale,
   };
 }
 
@@ -258,6 +283,45 @@ function normalizedRing(points: ModelPoint[]) {
 
 function pointToVector(point: ModelPoint, scale: number) {
   return new THREE.Vector2(point.x * scale, point.y * scale);
+}
+
+function terrainReliefAt(
+  terrain: PrintableModelData["terrain"] | null | undefined,
+  xMeters: number,
+  yMeters: number,
+) {
+  if (!terrain) {
+    return 0;
+  }
+
+  const column = (xMeters - terrain.minX) / terrain.spacingMeters;
+  const row = (yMeters - terrain.minY) / terrain.spacingMeters;
+  const left = Math.floor(column);
+  const top = Math.floor(row);
+  const right = Math.min(left + 1, terrain.columns - 1);
+  const bottom = Math.min(top + 1, terrain.rows - 1);
+  if (left < 0 || top < 0 || left >= terrain.columns || top >= terrain.rows) {
+    return 0;
+  }
+
+  const tx = Math.min(Math.max(column - left, 0), 1);
+  const ty = Math.min(Math.max(row - top, 0), 1);
+  const topLeft = terrain.elevations[top * terrain.columns + left];
+  const topRight = terrain.elevations[top * terrain.columns + right];
+  const bottomLeft = terrain.elevations[bottom * terrain.columns + left];
+  const bottomRight = terrain.elevations[bottom * terrain.columns + right];
+  const topValue = topLeft + (topRight - topLeft) * tx;
+  const bottomValue = bottomLeft + (bottomRight - bottomLeft) * tx;
+
+  return Math.max(
+    topValue + (bottomValue - topValue) * ty - terrain.minElevationMeters,
+    0,
+  );
+}
+
+function terrainHeightMmAt(input: ModelInput, metrics: ModelMetrics, point: ModelPoint) {
+  return terrainReliefAt(activeTerrainData(input), point.x, point.y) *
+    metrics.terrainVerticalScale;
 }
 
 function polygonArea(points: THREE.Vector2[]) {
@@ -493,11 +557,16 @@ function pushModelVertex(
   positions: number[],
   point: ModelPoint3,
   verticalOffsetMm: number,
+  input: ModelInput,
   metrics: ModelMetrics,
 ) {
+  const terrainHeightMm = terrainHeightMmAt(input, metrics, point);
   positions.push(
     point.x * metrics.horizontalScale,
-    metrics.surfaceY + verticalOffsetMm + point.z * metrics.verticalScale,
+    metrics.surfaceY +
+      terrainHeightMm +
+      verticalOffsetMm +
+      point.z * metrics.buildingVerticalScale,
     -point.y * metrics.horizontalScale,
   );
 
@@ -507,6 +576,7 @@ function pushModelVertex(
 function createLod22SolidGeometry(
   buildings: PrintableModelData["buildings"],
   verticalOffsetMm: number,
+  input: ModelInput,
   metrics: ModelMetrics,
 ) {
   const positions: number[] = [];
@@ -542,7 +612,7 @@ function createLod22SolidGeometry(
 
       const offset = positions.length / 3;
       for (const point of surface) {
-        pushModelVertex(positions, point, verticalOffsetMm, metrics);
+        pushModelVertex(positions, point, verticalOffsetMm, input, metrics);
       }
 
       for (const triangle of triangles) {
@@ -567,14 +637,47 @@ function createLod22SolidGeometry(
   return geometry;
 }
 
-function createLayerMaterial(color: string, opacity = 1) {
-  return new THREE.MeshStandardMaterial({
+type LayerMaterialOptions = {
+  polygonOffset?: boolean;
+  side?: THREE.Side;
+  unlit?: boolean;
+};
+
+function createLayerMaterial(
+  color: string,
+  opacity = 1,
+  options: LayerMaterialOptions = {},
+) {
+  const materialOptions = {
     color,
     depthWrite: opacity >= 0.98,
-    metalness: 0,
     opacity,
-    roughness: 0.72,
     transparent: opacity < 0.98,
+  };
+  const offsetOptions = options.polygonOffset
+    ? {
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      }
+    : {};
+  const sideOptions =
+    typeof options.side === "number" ? { side: options.side } : {};
+
+  if (options.unlit) {
+    return new THREE.MeshBasicMaterial({
+      ...materialOptions,
+      ...offsetOptions,
+      ...sideOptions,
+    });
+  }
+
+  return new THREE.MeshStandardMaterial({
+    ...materialOptions,
+    ...offsetOptions,
+    ...sideOptions,
+    metalness: 0,
+    roughness: 0.72,
   });
 }
 
@@ -625,6 +728,97 @@ function addPlanarRegionLayer(
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = renderMode === "extruded" ? topY - layerHeight : topY;
   group.add(mesh);
+}
+
+function addDrapedPlanarRegionLayer(
+  group: THREE.Group,
+  region: PlanarRegion,
+  input: ModelInput,
+  metrics: ModelMetrics,
+  material: THREE.Material,
+  renderMode: PrintableRenderMode,
+  topY: number,
+  heightMm: number,
+  terrainClearanceMm = 0,
+) {
+  const outer = planarRingVectors(region.outer);
+  const holes = region.holes
+    .map((hole) => planarRingVectors(hole))
+    .filter((hole) => hole.length >= 3 && polygonArea(hole) >= 0.00001);
+  if (outer.length < 3 || polygonArea(outer) < 0.00001) {
+    return;
+  }
+
+  const triangles = THREE.ShapeUtils.triangulateShape(outer, holes);
+  const vertices = [outer, ...holes].flat();
+  if (triangles.length === 0 || vertices.length === 0) {
+    return;
+  }
+
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const layerHeight =
+    renderMode === "extruded" ? Math.max(heightMm, SURFACE_MODE_THICKNESS_MM) : 0;
+  const vertexY = (point: THREE.Vector2) =>
+    topY +
+    terrainClearanceMm +
+    terrainHeightMmAt(input, metrics, {
+      x: point.x / metrics.horizontalScale,
+      y: point.y / metrics.horizontalScale,
+    });
+
+  for (const point of vertices) {
+    positions.push(point.x, vertexY(point), -point.y);
+  }
+
+  for (const triangle of triangles) {
+    indices.push(triangle[0], triangle[2], triangle[1]);
+  }
+
+  if (renderMode === "extruded") {
+    const bottomOffset = positions.length / 3;
+    for (const point of vertices) {
+      positions.push(point.x, vertexY(point) - layerHeight, -point.y);
+    }
+
+    for (const triangle of triangles) {
+      indices.push(
+        bottomOffset + triangle[0],
+        bottomOffset + triangle[1],
+        bottomOffset + triangle[2],
+      );
+    }
+
+    let ringOffset = 0;
+    for (const ring of [outer, ...holes]) {
+      for (let index = 0; index < ring.length; index += 1) {
+        const nextIndex = (index + 1) % ring.length;
+        const topStart = ringOffset + index;
+        const topEnd = ringOffset + nextIndex;
+        const bottomEnd = bottomOffset + topEnd;
+        const bottomStart = bottomOffset + topStart;
+        indices.push(
+          topStart,
+          bottomStart,
+          bottomEnd,
+          topStart,
+          bottomEnd,
+          topEnd,
+        );
+      }
+      ringOffset += ring.length;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  group.add(new THREE.Mesh(geometry, material));
 }
 
 function addLinePrisms(
@@ -685,6 +879,18 @@ function addLinePrisms(
       const startZ = clippedSegment.start.z;
       const endX = clippedSegment.end.x;
       const endZ = clippedSegment.end.z;
+      const startTerrainHeightMm = terrainHeightMmAt(input, metrics, {
+        x: startX / metrics.horizontalScale,
+        y: -startZ / metrics.horizontalScale,
+      });
+      const endTerrainHeightMm = terrainHeightMmAt(input, metrics, {
+        x: endX / metrics.horizontalScale,
+        y: -endZ / metrics.horizontalScale,
+      });
+      const startTopY = topY + startTerrainHeightMm;
+      const endTopY = topY + endTerrainHeightMm;
+      const startBottomY = bottomY + startTerrainHeightMm;
+      const endBottomY = bottomY + endTerrainHeightMm;
       const deltaX = endX - startX;
       const deltaZ = endZ - startZ;
       const length = Math.hypot(deltaX, deltaZ);
@@ -698,28 +904,28 @@ function addLinePrisms(
       const offset = positions.length / 3;
       positions.push(
         startX + normalX,
-        bottomY,
+        startBottomY,
         startZ + normalZ,
         startX - normalX,
-        bottomY,
+        startBottomY,
         startZ - normalZ,
         endX - normalX,
-        bottomY,
+        endBottomY,
         endZ - normalZ,
         endX + normalX,
-        bottomY,
+        endBottomY,
         endZ + normalZ,
         startX + normalX,
-        topY,
+        startTopY,
         startZ + normalZ,
         startX - normalX,
-        topY,
+        startTopY,
         startZ - normalZ,
         endX - normalX,
-        topY,
+        endTopY,
         endZ - normalZ,
         endX + normalX,
-        topY,
+        endTopY,
         endZ + normalZ,
       );
       indices.push(
@@ -793,6 +999,7 @@ function addBuildings(group: THREE.Group, input: ModelInput, metrics: ModelMetri
   const geometry = createLod22SolidGeometry(
     input.modelData.buildings,
     settings.verticalOffsetMm,
+    input,
     metrics,
   );
   if (!geometry) {
@@ -819,9 +1026,13 @@ function waterLineWidthMm(line: PrintableLine, metrics: ModelMetrics) {
   return line.widthMeters * metrics.horizontalScale;
 }
 
-function visibleWaterGeometry(input: ModelInput, metrics: ModelMetrics) {
+function visibleWaterFeatures(input: ModelInput, metrics: ModelMetrics) {
   if (!input.modelData || !input.layers.water) {
-    return createWaterMask([], [], metrics.horizontalScale);
+    return {
+      mask: createWaterMask([], [], metrics.horizontalScale),
+      polygons: [] as PrintableModelData["water"],
+      waterLines: [] as PrintableModelData["waterLines"],
+    };
   }
 
   const settings = input.modelSettings.layers.water;
@@ -840,33 +1051,60 @@ function visibleWaterGeometry(input: ModelInput, metrics: ModelMetrics) {
       waterLineWidthMm(line, metrics) >= settings.minimumWidthMm,
   );
 
-  return createWaterMask(
-    polygons.map((polygon) => ({
-      holes: polygon.holes,
-      points: polygon.points,
-    })),
-    waterLines.map((line) => ({
-      points: line.points,
-      widthMm: Math.max(
-        waterLineWidthMm(line, metrics),
-        settings.minimumWidthMm,
-      ),
-    })),
-    metrics.horizontalScale,
+  return {
+    mask: createWaterMask(
+      polygons.map((polygon) => ({
+        holes: polygon.holes,
+        points: polygon.points,
+      })),
+      waterLines.map((line) => ({
+        points: line.points,
+        widthMm: Math.max(
+          waterLineWidthMm(line, metrics),
+          settings.minimumWidthMm,
+        ),
+      })),
+      metrics.horizontalScale,
+    ),
+    polygons,
+    waterLines,
+  };
+}
+
+function averageTerrainHeightForRegion(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  region: PlanarRegion,
+) {
+  if (!activeTerrainData(input) || region.outer.length === 0) {
+    return 0;
+  }
+
+  const sum = region.outer.reduce(
+    (total, point) =>
+      total +
+      terrainHeightMmAt(input, metrics, {
+        x: point[0] / metrics.horizontalScale,
+        y: point[1] / metrics.horizontalScale,
+      }),
+    0,
   );
+
+  return sum / region.outer.length;
 }
 
 function addWater(
   group: THREE.Group,
   input: ModelInput,
   metrics: ModelMetrics,
-  waterMask: ReturnType<typeof createWaterMask>,
+  waterFeatures: ReturnType<typeof visibleWaterFeatures>,
 ) {
-  if (!input.modelData || !input.layers.water || waterMask.length === 0) {
+  if (!input.modelData || !input.layers.water || waterFeatures.mask.length === 0) {
     return;
   }
 
   const settings = input.modelSettings.layers.water;
+  const hasTerrain = Boolean(activeTerrainData(input));
   const height =
     settings.renderMode === "extruded"
       ? settings.extrudedHeightMm
@@ -877,15 +1115,46 @@ function addWater(
     (settings.sinkIntoTerrain ? settings.sinkDepthMm : 0) +
     MIN_LAYER_LIFT_MM;
   const waterMaterial = createLayerMaterial(settings.color, settings.opacity);
+  const polygonMask = hasTerrain
+    ? createWaterMask(
+        waterFeatures.polygons.map((polygon) => ({
+          holes: polygon.holes,
+          points: polygon.points,
+        })),
+        [],
+        metrics.horizontalScale,
+      )
+    : waterFeatures.mask;
 
-  for (const region of planarRegions(waterMask)) {
+  for (const region of planarRegions(polygonMask)) {
+    const terrainHeightMm = averageTerrainHeightForRegion(input, metrics, region);
     addPlanarRegionLayer(
       group,
       region,
       waterMaterial,
       settings.renderMode,
+      settings.renderMode === "extruded"
+        ? topY + height + terrainHeightMm
+        : topY + terrainHeightMm,
+      height,
+    );
+  }
+
+  if (hasTerrain && waterFeatures.waterLines.length > 0) {
+    addLinePrisms(
+      group,
+      waterFeatures.waterLines,
+      input,
+      metrics,
+      waterMaterial,
       settings.renderMode === "extruded" ? topY + height : topY,
       height,
+      (line) =>
+        Math.max(
+          waterLineWidthMm(line, metrics),
+          settings.minimumWidthMm,
+          MIN_LINE_WIDTH_MM,
+        ),
     );
   }
 }
@@ -948,17 +1217,36 @@ function addLandCover(
     const stableRegions = planarRegions(categoryMask).filter(
       stableLandCoverRegion,
     );
-    const material = createLayerMaterial(category.color, settings.opacity);
+    const hasTerrain = Boolean(activeTerrainData(input));
+    const material = createLayerMaterial(category.color, settings.opacity, {
+      polygonOffset: hasTerrain,
+      side: hasTerrain ? THREE.DoubleSide : undefined,
+      unlit: hasTerrain,
+    });
 
     for (const region of stableRegions) {
-      addPlanarRegionLayer(
-        group,
-        region,
-        material,
-        category.renderMode,
-        topY,
-        height,
-      );
+      if (hasTerrain) {
+        addDrapedPlanarRegionLayer(
+          group,
+          region,
+          input,
+          metrics,
+          material,
+          category.renderMode,
+          topY,
+          height,
+          DRAPED_LAND_COVER_CLEARANCE_MM,
+        );
+      } else {
+        addPlanarRegionLayer(
+          group,
+          region,
+          material,
+          category.renderMode,
+          topY,
+          height,
+        );
+      }
     }
 
     const stableMask: ReturnType<typeof createWaterMask> = stableRegions.map(
@@ -1013,9 +1301,9 @@ function addOpenStreetMapLayers(
     return;
   }
 
-  const waterMask = visibleWaterGeometry(input, metrics);
-  addLandCover(group, input, metrics, waterMask);
-  addWater(group, input, metrics, waterMask);
+  const waterFeatures = visibleWaterFeatures(input, metrics);
+  addLandCover(group, input, metrics, waterFeatures.mask);
+  addWater(group, input, metrics, waterFeatures);
   addRoads(group, input, metrics);
 }
 
@@ -1062,6 +1350,135 @@ function addFrame(group: THREE.Group, input: ModelInput, metrics: ModelMetrics) 
     steps: 1,
   });
   geometry.rotateX(-Math.PI / 2);
+  group.add(new THREE.Mesh(geometry, material));
+}
+
+function addFlatTerrainTop(
+  group: THREE.Group,
+  input: ModelInput,
+  metrics: ModelMetrics,
+  material: THREE.Material,
+) {
+  const topShape = createSelectionShape(input, metrics);
+  if (!topShape) {
+    return;
+  }
+
+  const top = new THREE.Mesh(
+    new THREE.ShapeGeometry(topShape, CIRCLE_GEOMETRY_SEGMENTS),
+    material,
+  );
+  top.rotation.x = -Math.PI / 2;
+  top.position.y = metrics.surfaceY;
+  group.add(top);
+}
+
+function addTerrainReliefTop(
+  group: THREE.Group,
+  input: ModelInput,
+  metrics: ModelMetrics,
+  material: THREE.Material,
+) {
+  const terrain = activeTerrainData(input);
+  if (!terrain) {
+    addFlatTerrainTop(group, input, metrics, material);
+    return;
+  }
+
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const boundary = selectionLocalFootprint(
+    input.selection,
+    input.radiusMeters,
+    CIRCLE_GEOMETRY_SEGMENTS,
+  );
+  const centerIndex = positions.length / 3;
+
+  positions.push(0, metrics.surfaceY + terrainHeightMmAt(input, metrics, { x: 0, y: 0 }), 0);
+
+  const ringIndices: number[][] = [];
+  for (let ring = 1; ring <= TERRAIN_RADIAL_RINGS; ring += 1) {
+    const fraction = ring / TERRAIN_RADIAL_RINGS;
+    const currentRing: number[] = [];
+
+    for (const boundaryPoint of boundary) {
+      const point = {
+        x: boundaryPoint.x * fraction,
+        y: boundaryPoint.y * fraction,
+      };
+
+      positions.push(
+        point.x * metrics.horizontalScale,
+        metrics.surfaceY + terrainHeightMmAt(input, metrics, point),
+        -point.y * metrics.horizontalScale,
+      );
+      currentRing.push(positions.length / 3 - 1);
+    }
+
+    ringIndices.push(currentRing);
+  }
+
+  const firstRing = ringIndices[0];
+  for (let index = 0; index < firstRing.length; index += 1) {
+    indices.push(
+      centerIndex,
+      firstRing[index],
+      firstRing[(index + 1) % firstRing.length],
+    );
+  }
+
+  for (let ring = 1; ring < ringIndices.length; ring += 1) {
+    const innerRing = ringIndices[ring - 1];
+    const outerRing = ringIndices[ring];
+
+    for (let index = 0; index < outerRing.length; index += 1) {
+      const nextIndex = (index + 1) % outerRing.length;
+      indices.push(
+        innerRing[index],
+        outerRing[index],
+        outerRing[nextIndex],
+        innerRing[index],
+        outerRing[nextIndex],
+        innerRing[nextIndex],
+      );
+    }
+  }
+
+  const outerRing = ringIndices[ringIndices.length - 1];
+  for (let index = 0; index < outerRing.length; index += 1) {
+    const nextIndex = (index + 1) % outerRing.length;
+    const topStart = outerRing[index];
+    const topEnd = outerRing[nextIndex];
+    const startPoint = boundary[index];
+    const endPoint = boundary[nextIndex];
+    const baseEnd = positions.length / 3;
+    positions.push(
+      endPoint.x * metrics.horizontalScale,
+      metrics.surfaceY,
+      -endPoint.y * metrics.horizontalScale,
+    );
+    const baseStart = positions.length / 3;
+    positions.push(
+      startPoint.x * metrics.horizontalScale,
+      metrics.surfaceY,
+      -startPoint.y * metrics.horizontalScale,
+    );
+    indices.push(topStart, baseStart, baseEnd, topStart, baseEnd, topEnd);
+  }
+
+  if (boundary.length < 3 || indices.length === 0) {
+    addFlatTerrainTop(group, input, metrics, material);
+    return;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
   group.add(new THREE.Mesh(geometry, material));
 }
 
@@ -1315,26 +1732,16 @@ function createPrintableModel(input: ModelInput) {
   const metrics = createModelMetrics(input);
 
   const surfaceMaterial = new THREE.MeshStandardMaterial({
-    color: TERRAIN_SURFACE_COLOR,
+    color: activeTerrainData(input)
+      ? input.modelSettings.layers.terrain.color
+      : TERRAIN_SURFACE_COLOR,
     metalness: 0,
     roughness: 0.82,
   });
 
   addBase(group, input, metrics);
   addFrame(group, input, metrics);
-
-  const topShape = createSelectionShape(input, metrics);
-  if (!topShape) {
-    return group;
-  }
-
-  const top = new THREE.Mesh(
-    new THREE.ShapeGeometry(topShape, CIRCLE_GEOMETRY_SEGMENTS),
-    surfaceMaterial,
-  );
-  top.rotation.x = -Math.PI / 2;
-  top.position.y = metrics.surfaceY;
-  group.add(top);
+  addTerrainReliefTop(group, input, metrics, surfaceMaterial);
 
   addOpenStreetMapLayers(group, input, metrics);
   addBuildings(group, input, metrics);
@@ -1414,6 +1821,13 @@ const PrintableModelPreview = forwardRef<
             ...(modelData.sources?.threeDbag
               ? [APP_TEXT.dataSources.threeDbag.attribution]
               : []),
+            ...(layers.terrain && modelData.sources?.terrain && modelData.terrain
+              ? [modelData.terrain.attribution]
+              : [
+                  layers.terrain
+                    ? "Terrain: flat fallback (elevation data unavailable)"
+                    : "Terrain: disabled by user",
+                ]),
             "",
             `Generated: ${modelData.generatedAt}`,
             `Center: ${selection.latitude.toFixed(7)}, ${selection.longitude.toFixed(7)}`,

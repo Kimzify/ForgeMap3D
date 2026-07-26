@@ -39,6 +39,14 @@ export const APP_TEXT = {
       dataPrefix: "Data:",
       name: "OpenStreetMap",
     },
+    openTopoData: {
+      attribution: "Elevation: SRTM 30m via Open Topo Data public API",
+      contributors: "Open Topo Data",
+      creditPrefix: "Elevation:",
+      dataName: "SRTM 30m",
+      license: "Public domain",
+      name: "Open Topo Data",
+    },
     threeDbag: {
       attribution: "Buildings: © 3DBAG by tudelft3d and 3DGI, CC BY 4.0",
       copyright: "© 3DBAG by tudelft3d and 3DGI",
@@ -212,6 +220,14 @@ export const APP_TEXT = {
         computedWidthsToggle: "Show computed width per road type",
         title: "Roads",
         widthScale: "Width scale",
+      },
+      terrain: {
+        color: "Terrain Relief Color",
+        colorLabel: "Terrain relief color",
+        help:
+          "Raises the terrain from public elevation data. Turn off for a flat map.",
+        title: "Terrain Relief",
+        verticalExaggeration: "Vertical exaggeration",
       },
       shared: {
         color: "Color",

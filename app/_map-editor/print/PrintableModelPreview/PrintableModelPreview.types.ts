@@ -38,10 +38,12 @@ export type ObjMtlExport = {
 
 export type ModelMetrics = {
   baseHeightMm: number;
+  buildingVerticalScale: number;
   frameHeightMm: number;
   frameWidthMm: number;
   horizontalScale: number;
   surfaceY: number;
+  terrainVerticalScale: number;
   terrainRadiusMm: number;
   totalRadiusMm: number;
   verticalScale: number;

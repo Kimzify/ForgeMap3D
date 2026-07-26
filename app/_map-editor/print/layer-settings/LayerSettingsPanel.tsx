@@ -4,6 +4,7 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
+  Mountain,
   Route,
   Sprout,
   Waves,
@@ -106,12 +107,69 @@ export default function LayerSettingsPanel({
           label: LAYER_TEXT.buildings.dataOpenStreetMap,
           value: "openStreetMap" as const,
         };
+  const buildingDataOptions = [
+    usesFootprintBuildings
+      ? footprintBuildingOption
+      : {
+          label: LAYER_TEXT.buildings.dataHighDetail,
+          value: "highDetail" as const,
+        },
+  ];
+  const selectedBuildingData = usesFootprintBuildings
+    ? footprintBuildingOption.value
+    : buildingSettings.data;
   const roadSettings = printModelSettings.layers.roads;
+  const terrainSettings = printModelSettings.layers.terrain;
   const waterSettings = printModelSettings.layers.water;
   const landCoverSettings = printModelSettings.layers.landCover;
 
   return (
     <div className={styles.list}>
+      <section className={styles.section}>
+        <LayerHeader
+          enabled={printLayers.terrain}
+          icon={Mountain}
+          keyName="terrain"
+          label={LAYER_TEXT.terrain.title}
+          onLayerSectionToggle={onLayerSectionToggle}
+          onPrintLayerToggle={onPrintLayerToggle}
+          openLayerSections={openLayerSections}
+        />
+        {openLayerSections.terrain ? (
+          <div className={styles.content}>
+            <RangeNumberField
+              disabled={!printLayers.terrain}
+              displayValue={formatDecimal(terrainSettings.verticalExaggeration)}
+              id="terrain-vertical-exaggeration"
+              label={LAYER_TEXT.terrain.verticalExaggeration}
+              limits={PRINTABLE_LAYER_LIMITS.terrainVerticalExaggeration}
+              onChange={(value) =>
+                actions.updateTerrainSettings({
+                  verticalExaggeration: clampPrintableValue(
+                    value,
+                    PRINTABLE_LAYER_LIMITS.terrainVerticalExaggeration,
+                  ),
+                })
+              }
+              value={terrainSettings.verticalExaggeration}
+            />
+            <p className={styles.help}>{LAYER_TEXT.terrain.help}</p>
+            <div className={styles.controlGroup}>
+              <label className={styles.label} htmlFor="terrain-color">
+                {LAYER_TEXT.terrain.color}
+              </label>
+              <ColorField
+                color={terrainSettings.color}
+                disabled={!printLayers.terrain}
+                id="terrain-color"
+                label={LAYER_TEXT.terrain.colorLabel}
+                onChange={(color) => actions.updateTerrainSettings({ color })}
+              />
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <section className={styles.section}>
         <LayerHeader
           enabled={printLayers.buildings}
@@ -125,28 +183,16 @@ export default function LayerSettingsPanel({
         {openLayerSections.buildings ? (
           <div className={styles.content}>
             <div className={styles.controlGroup}>
-              <label className={styles.label} htmlFor="building-data">
-                {LAYER_TEXT.buildings.data}
-              </label>
-              <SelectField
-                disabled={!printLayers.buildings || usesFootprintBuildings}
-                id="building-data"
-                label={LAYER_TEXT.buildings.data}
-                onChange={(data) => actions.updateBuildingSettings({ data })}
-                options={[
-                  usesFootprintBuildings
-                    ? footprintBuildingOption
-                    : {
-                        label: LAYER_TEXT.buildings.dataHighDetail,
-                        value: "highDetail",
-                      },
-                ]}
-                value={
-                  usesFootprintBuildings
-                    ? footprintBuildingOption.value
-                    : buildingSettings.data
-                }
-              />
+              {buildingDataOptions.length > 1 ? (
+                <SelectField
+                  disabled={!printLayers.buildings || usesFootprintBuildings}
+                  id="building-data"
+                  label={LAYER_TEXT.buildings.data}
+                  onChange={(data) => actions.updateBuildingSettings({ data })}
+                  options={buildingDataOptions}
+                  value={selectedBuildingData}
+                />
+              ) : null}
               <p className={styles.help}>
                 {buildingSource === "overtureMaps"
                   ? LAYER_TEXT.buildings.dataOvertureMapsHelp

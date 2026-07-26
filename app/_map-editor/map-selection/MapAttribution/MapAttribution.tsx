@@ -15,7 +15,7 @@ export default function MapAttribution({
       <span>
         {DATA_SOURCE_TEXT.openStreetMap.dataPrefix} ©{" "}
         <a href={attribution.osm.copyrightUrl} rel="noreferrer" target="_blank">
-          {DATA_SOURCE_TEXT.openStreetMap.contributors}
+          {DATA_SOURCE_TEXT.openStreetMap.name}
         </a>
       </span>
       {attribution.showOvertureMaps ? (
@@ -27,6 +27,26 @@ export default function MapAttribution({
             target="_blank"
           >
             {DATA_SOURCE_TEXT.overtureMaps.contributors}
+          </a>
+        </span>
+      ) : null}
+      {attribution.showOpenTopoData ? (
+        <span>
+          {DATA_SOURCE_TEXT.openTopoData.creditPrefix}{" "}
+          <a
+            href={attribution.openTopoData.attributionUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {DATA_SOURCE_TEXT.openTopoData.dataName}
+          </a>
+          ,{" "}
+          <a
+            href={attribution.openTopoData.licenseUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {DATA_SOURCE_TEXT.openTopoData.license}
           </a>
         </span>
       ) : null}

@@ -101,6 +101,9 @@ npm run build
   additional open sources.
 - [3DBAG](https://docs.3dbag.nl/en/) provides enhanced Dutch building geometry
   by tudelft3d and 3DGI under CC BY 4.0.
+- [Open Topo Data](https://www.opentopodata.org/datasets/srtm/) provides
+  SRTM 30m elevation data through its public API. SRTM is supplied by USGS/NASA
+  as public-domain elevation data.
 - [Nominatim](https://nominatim.org/) provides worldwide place-name search.
 - Public Overpass API instances provide OpenStreetMap geometry used for model
   generation.

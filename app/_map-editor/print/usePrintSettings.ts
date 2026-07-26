@@ -55,6 +55,7 @@ export function usePrintSettings({
     buildings: false,
     landCover: false,
     roads: false,
+    terrain: false,
     water: false,
   });
   const [advancedLayerPanel, setAdvancedLayerPanel] =
@@ -208,6 +209,22 @@ export function usePrintSettings({
           ...current.layers,
           water: {
             ...current.layers.water,
+            ...updates,
+          },
+        },
+      }));
+    },
+    [],
+  );
+
+  const updateTerrainSettings = useCallback(
+    (updates: Partial<PrintableModelSettings["layers"]["terrain"]>) => {
+      setPrintModelSettings((current) => ({
+        ...current,
+        layers: {
+          ...current.layers,
+          terrain: {
+            ...current.layers.terrain,
             ...updates,
           },
         },
@@ -451,6 +468,7 @@ export function usePrintSettings({
       updatePrintFrame,
       updateRoadCategory,
       updateRoadSettings,
+      updateTerrainSettings,
       updateWaterSettings,
     }),
     [
@@ -469,6 +487,7 @@ export function usePrintSettings({
       updatePrintFrame,
       updateRoadCategory,
       updateRoadSettings,
+      updateTerrainSettings,
       updateWaterSettings,
     ],
   );
