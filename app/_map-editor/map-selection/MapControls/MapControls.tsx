@@ -106,14 +106,17 @@ export default function MapControls({
             aria-label={MAP_TEXT.toolbar.drawCircle}
             aria-pressed={isToolActive("circle")}
             active={isToolActive("circle")}
-            className={styles.shapeToolButton}
+            className={`${styles.shapeToolButton} ${styles.circleToolButton}`}
             disabled={isEditingDisabled}
             icon={<CircleDot aria-hidden="true" size={ICON_SIZES.STANDARD} />}
             onClick={() => onToggleShapeDrawing("circle")}
             title={MAP_TEXT.toolbar.drawCircle}
             variant="tool"
           >
-            <span>{MAP_TEXT.toolbar.circle}</span>
+            <span className={styles.shapeLabel}>{MAP_TEXT.toolbar.circle}</span>
+            <span className={styles.mobileShapeLabel}>
+              {MAP_TEXT.toolbar.drawCircle}
+            </span>
           </Button>
           <Button
             aria-label={MAP_TEXT.toolbar.drawHexagon}

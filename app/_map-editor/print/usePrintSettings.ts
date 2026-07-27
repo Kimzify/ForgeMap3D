@@ -12,6 +12,7 @@ import {
   PRINTABLE_FRAME_LIMITS,
   PRINTABLE_LAND_COVER_CATEGORIES,
   PRINTABLE_ROAD_CATEGORIES,
+  shouldEnableTerrainReliefByDefault,
   type PrintableLandCoverCategoryKey,
   type PrintableLandCoverSettings,
   type PrintableLayerKey,
@@ -35,12 +36,21 @@ const MIN_BUILDING_HEIGHT_METERS = 0;
 const MIN_LOCKED_MODEL_HEIGHT_MM = 1;
 const DIAMETER_TO_RADIUS_DIVISOR = 2;
 
+function defaultPrintableLayersForModelData(
+  printModelData: UsePrintSettingsParams["printModelData"],
+) {
+  return {
+    ...DEFAULT_PRINTABLE_LAYERS,
+    terrain: shouldEnableTerrainReliefByDefault(printModelData),
+  };
+}
+
 export function usePrintSettings({
   printModelData,
   radiusMeters,
 }: UsePrintSettingsParams) {
-  const [printLayers, setPrintLayers] = useState<PrintableLayers>(
-    DEFAULT_PRINTABLE_LAYERS,
+  const [printLayers, setPrintLayers] = useState<PrintableLayers>(() =>
+    defaultPrintableLayersForModelData(printModelData),
   );
   const [printTab, setPrintTab] = useState<PrintTab>("model");
   const [openModelSections, setOpenModelSections] = useState<

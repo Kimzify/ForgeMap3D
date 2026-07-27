@@ -134,7 +134,11 @@ a {
 
 @media (max-width: 560px) {
   .workspace {
-    grid-template-rows: minmax(280px, 44dvh) minmax(0, 1fr);
+    grid-template-rows: minmax(400px, 64dvh) minmax(0, 1fr);
+  }
+
+  .side-panel {
+    padding: 12px;
   }
 }
 

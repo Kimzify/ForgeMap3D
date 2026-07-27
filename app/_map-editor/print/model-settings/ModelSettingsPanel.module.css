@@ -102,6 +102,31 @@
   }
 }
 
+@media (max-width: 560px) {
+  .header {
+    padding: 8px 12px;
+  }
+
+  .stack {
+    gap: 10px;
+    padding: 12px 10px 18px;
+  }
+
+  .card {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .cardHeading h3 {
+    font-size: 14px;
+  }
+
+  .cardHeading p,
+  .help {
+    font-size: 12px;
+  }
+}
+
 @media (max-width: 420px) {
   .list {
     margin: 0 -12px -12px;

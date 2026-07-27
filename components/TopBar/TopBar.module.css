@@ -128,17 +128,59 @@
 }
 
 @media (max-width: 560px) {
-  .brand {
-    font-size: 14px;
+  .topBar {
+    align-items: center;
+    flex-direction: row;
+    gap: 8px;
+    min-height: 54px;
+    padding: 8px 10px;
   }
 
-  .topBar {
-    padding: 10px 12px;
+  .brand {
+    flex: 1 1 auto;
+    font-size: 13px;
+    gap: 8px;
+  }
+
+  .brandIcon {
+    height: 30px;
+    width: 30px;
+  }
+
+  .actions {
+    flex: 0 1 auto;
+    gap: 6px;
+    width: auto;
+  }
+
+  .githubLink {
+    aspect-ratio: 1 / 1;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    justify-content: center;
+    padding: 0;
+    width: 34px;
+  }
+
+  .githubLink span {
+    display: none;
   }
 
   .githubLink,
   .sourcePill {
-    min-height: 32px;
+    min-height: 34px;
+  }
+
+  .sourcePill {
+    flex: 0 1 auto;
+    font-size: 11px;
+    gap: 6px;
+    max-width: min(44vw, 172px);
+    padding: 0 10px;
+  }
+
+  .sourcePill svg {
+    flex: 0 0 auto;
   }
 }
 

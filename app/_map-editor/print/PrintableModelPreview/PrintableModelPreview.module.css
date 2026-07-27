@@ -77,15 +77,6 @@
 
 @media (max-width: 560px) {
   .sizeCard {
-    left: 12px;
-    max-width: calc(100% - 24px);
-    right: auto;
-    top: 12px;
-    width: calc(100% - 24px);
-  }
-
-  .sizeCard strong,
-  .sizeCard span {
-    font-size: 12px;
+    display: none;
   }
 }

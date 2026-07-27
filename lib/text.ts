@@ -123,7 +123,7 @@ export const APP_TEXT = {
       hexagon: "Hex",
       hideSidePanel: "Hide area sidebar",
       rectangle: "Square",
-      resetCamera: "Reset camera",
+      resetCamera: "My location",
       selectionShape: "Selection shape",
       selectionRadius: "Selection radius in meters",
       selectionSize: "Selection size",

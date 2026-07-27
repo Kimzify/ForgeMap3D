@@ -206,10 +206,31 @@ export type PrintableModelData = {
 export const DEFAULT_PRINTABLE_LAYERS: PrintableLayers = {
   buildings: true,
   roads: true,
-  terrain: true,
+  terrain: false,
   water: true,
   landCover: true,
 };
+
+export const PRINTABLE_TERRAIN_RELIEF_DEFAULT_MIN_RANGE_METERS = 75;
+
+export function terrainElevationRangeMeters(
+  terrain: PrintableTerrainData | null | undefined,
+) {
+  if (!terrain) {
+    return 0;
+  }
+
+  return Math.max(terrain.maxElevationMeters - terrain.minElevationMeters, 0);
+}
+
+export function shouldEnableTerrainReliefByDefault(
+  modelData: PrintableModelData | null,
+) {
+  return (
+    terrainElevationRangeMeters(modelData?.terrain) >=
+    PRINTABLE_TERRAIN_RELIEF_DEFAULT_MIN_RANGE_METERS
+  );
+}
 
 export const PRINTABLE_DIMENSION_LIMITS = {
   baseHeightMm: { max: 20, min: 0, step: 0.25 },

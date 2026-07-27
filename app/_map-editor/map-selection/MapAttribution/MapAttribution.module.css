@@ -29,8 +29,32 @@
 
 @media (max-width: 560px) {
   .attribution {
-    bottom: 8px;
-    left: 8px;
-    right: 8px;
+    bottom: auto;
+    display: flex;
+    flex-wrap: nowrap;
+    font-size: 10px;
+    gap: 4px;
+    left: 10px;
+    max-height: 28px;
+    max-width: calc(100% - 20px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 5px 8px;
+    right: 10px;
+    scrollbar-width: none;
+    top: 8px;
+    white-space: nowrap;
+  }
+
+  .attribution::-webkit-scrollbar {
+    display: none;
+  }
+
+  .attribution > * {
+    flex: 0 0 auto;
+  }
+
+  .attributionOverflow {
+    mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 22px), transparent);
   }
 }

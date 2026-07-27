@@ -54,3 +54,21 @@
     min-height: 44px;
   }
 }
+
+@media (max-width: 560px) {
+  .toggle {
+    font-size: 14px;
+    gap: 8px;
+    min-height: 40px;
+  }
+
+  .title {
+    gap: 9px;
+  }
+
+  .title > svg {
+    height: 30px;
+    padding: 6px;
+    width: 30px;
+  }
+}

@@ -17,6 +17,7 @@ import {
 } from "@/lib/dataSources";
 import {
   createLocalMetricProjection,
+  isSupportedLocation,
   maximumRadiusForLocation,
 } from "@/lib/geography";
 import type { PrintableModelData } from "@/lib/printModel";
@@ -80,6 +81,13 @@ import type {
 const MAP_TEXT = APP_TEXT.mapEditor;
 const MAP_STATUS = APP_TEXT.mapEditor.status;
 const DIAMETER_MULTIPLIER = 2;
+const INITIAL_GEOLOCATION_TIMEOUT_MS = 5000;
+const INITIAL_GEOLOCATION_MAXIMUM_AGE_MS = 10 * 60 * 1000;
+const INITIAL_GEOLOCATION_OPTIONS: PositionOptions = {
+  enableHighAccuracy: false,
+  maximumAge: INITIAL_GEOLOCATION_MAXIMUM_AGE_MS,
+  timeout: INITIAL_GEOLOCATION_TIMEOUT_MS,
+};
 
 function clampRectangleSideMeters(value: number, center: SelectionCenter) {
   return clampRadiusMeters(
@@ -198,6 +206,20 @@ function dragStatusForShape(shape: SelectionShape) {
   return MAP_STATUS.dragToSetCircleSize;
 }
 
+function focusedCameraHeightMeters(cameraHeightMeters: number) {
+  return Math.max(
+    cameraHeightMeters * LOCATION_SEARCH_CAMERA_HEIGHT_RATIO,
+    MIN_LOCATION_SEARCH_CAMERA_HEIGHT_METERS,
+  );
+}
+
+function centerFromGeolocation(position: GeolocationPosition): SelectionCenter {
+  return {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+  };
+}
+
 function drawingStatusForSelection(
   selection: MapSelection,
   radiusMeters: number,
@@ -245,6 +267,7 @@ export default function MapSelectionPage() {
   const selectedSearchLabelRef = useRef<string | null>(null);
   const searchRequestIdRef = useRef(0);
   const autoGenerateQueryRef = useRef<string | null>(null);
+  const hasRequestedInitialLocationRef = useRef(false);
 
   const [config, setConfig] = useState<AppConfig>(APP_CONFIG);
   const [selection, setSelection] = useState<MapSelection | null>(
@@ -266,6 +289,7 @@ export default function MapSelectionPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [isViewerReady, setIsViewerReady] = useState(false);
+  const [viewerRevision, setViewerRevision] = useState(0);
   const [isPrintModelGenerating, setIsPrintModelGenerating] = useState(false);
   const [printModelGenerationError, setPrintModelGenerationError] =
     useState<string | null>(null);
@@ -304,23 +328,74 @@ export default function MapSelectionPage() {
     viewerRef.current?.scene.requestRender();
   }, [radiusMeters]);
 
-  const resetCamera = useCallback(() => {
-    const viewer = viewerRef.current;
-    const Cesium = cesiumRef.current;
+  const flyToMapCenter = useCallback(
+    (
+      center: SelectionCenter,
+      cameraHeightMeters: number,
+      duration = CAMERA_RESET_DURATION_SECONDS,
+    ) => {
+      const viewer = viewerRef.current;
+      const Cesium = cesiumRef.current;
 
-    if (!viewer || !Cesium) {
+      if (!viewer || viewer.isDestroyed() || !Cesium) {
+        return;
+      }
+
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(
+          center.longitude,
+          center.latitude,
+          cameraHeightMeters,
+        ),
+        duration,
+      });
+      viewer.scene.requestRender();
+    },
+    [],
+  );
+
+  const resetCamera = useCallback(() => {
+    if (!viewerRef.current || !cesiumRef.current) {
       return;
     }
 
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        config.view.center.longitude,
-        config.view.center.latitude,
-        config.view.cameraHeightMeters,
-      ),
-      duration: CAMERA_RESET_DURATION_SECONDS,
-    });
-  }, [config]);
+    const flyToFallback = () => {
+      const currentSelection = draftSelectionRef.current ?? selection;
+      flyToMapCenter(
+        currentSelection ?? config.view.center,
+        currentSelection
+          ? focusedCameraHeightMeters(config.view.cameraHeightMeters)
+          : config.view.cameraHeightMeters,
+      );
+    };
+
+    if (!("geolocation" in navigator)) {
+      flyToFallback();
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const center = centerFromGeolocation(position);
+        if (!isSupportedLocation(center.longitude, center.latitude)) {
+          flyToFallback();
+          return;
+        }
+
+        flyToMapCenter(
+          center,
+          focusedCameraHeightMeters(config.view.cameraHeightMeters),
+        );
+      },
+      flyToFallback,
+      INITIAL_GEOLOCATION_OPTIONS,
+    );
+  }, [
+    config.view.cameraHeightMeters,
+    config.view.center,
+    flyToMapCenter,
+    selection,
+  ]);
 
   const focusLocationSearchResult = useCallback(
     (result: LocationSearchResult, closePanel = true) => {
@@ -748,6 +823,7 @@ export default function MapSelectionPage() {
           : MAP_STATUS.noAreaSelected,
       );
       setIsViewerReady(true);
+      setViewerRevision((current) => current + 1);
       viewer.scene.requestRender();
 
       const pointFromScreenPosition = (position: CesiumCartesian2) => {
@@ -947,7 +1023,6 @@ export default function MapSelectionPage() {
       clickHandlerRef.current = null;
       drawStartRef.current = null;
       drawShapeRef.current = null;
-      draftSelectionRef.current = null;
       pendingDraftSelectionRef.current = null;
       pendingDraftRadiusRef.current = null;
       if (draftRadiusAnimationFrameRef.current !== null) {
@@ -968,6 +1043,62 @@ export default function MapSelectionPage() {
       selectionEntityRef.current = null;
     };
   }, [config]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const Cesium = cesiumRef.current;
+
+    if (
+      hasRequestedInitialLocationRef.current ||
+      !isViewerReady ||
+      !viewer ||
+      !Cesium ||
+      routeQuery ||
+      selection
+    ) {
+      return;
+    }
+
+    if (!("geolocation" in navigator)) {
+      hasRequestedInitialLocationRef.current = true;
+      return;
+    }
+
+    hasRequestedInitialLocationRef.current = true;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const currentViewer = viewerRef.current;
+        const center = centerFromGeolocation(position);
+
+        if (
+          !currentViewer ||
+          currentViewer.isDestroyed() ||
+          !isSupportedLocation(center.longitude, center.latitude) ||
+          draftSelectionRef.current ||
+          activeDrawShapeRef.current
+        ) {
+          return;
+        }
+
+        flyToMapCenter(
+          center,
+          focusedCameraHeightMeters(config.view.cameraHeightMeters),
+          LOCATION_FOCUS_DURATION_SECONDS,
+        );
+      },
+      () => {
+        viewerRef.current?.scene.requestRender();
+      },
+      INITIAL_GEOLOCATION_OPTIONS,
+    );
+  }, [
+    config.view.cameraHeightMeters,
+    flyToMapCenter,
+    isViewerReady,
+    routeQuery,
+    selection,
+    viewerRevision,
+  ]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -1066,7 +1197,13 @@ export default function MapSelectionPage() {
     });
 
     viewer.scene.requestRender();
-  }, [isViewerReady, selectedLatitude, selectedLongitude, selectedSelectionShape]);
+  }, [
+    isViewerReady,
+    selectedLatitude,
+    selectedLongitude,
+    selectedSelectionShape,
+    viewerRevision,
+  ]);
 
   const topStatus =
     mapStatus === MAP_STATUS.loadingMapData ||

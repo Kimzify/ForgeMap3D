@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { APP_TEXT } from "@/lib/text";
 import styles from "./MapAttribution.module.css";
 import type { MapAttributionProps } from "./MapAttribution.types";
@@ -10,8 +11,39 @@ const MAP_TEXT = APP_TEXT.mapEditor;
 export default function MapAttribution({
   attribution,
 }: MapAttributionProps) {
+  const attributionRef = useRef<HTMLDivElement | null>(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    const element = attributionRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateOverflow = () => {
+      setHasOverflow(element.scrollWidth > element.clientWidth + 1);
+    };
+
+    updateOverflow();
+    const resizeObserver = new ResizeObserver(updateOverflow);
+    resizeObserver.observe(element);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [attribution]);
+
   return (
-    <div className={styles.attribution} aria-label={MAP_TEXT.aria.dataAttribution}>
+    <div
+      ref={attributionRef}
+      className={[
+        styles.attribution,
+        hasOverflow ? styles.attributionOverflow : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      aria-label={MAP_TEXT.aria.dataAttribution}
+    >
       <span>
         {DATA_SOURCE_TEXT.openStreetMap.dataPrefix} ©{" "}
         <a href={attribution.osm.copyrightUrl} rel="noreferrer" target="_blank">

@@ -168,4 +168,30 @@ assert.ok(
   )}mm flat=${flatHeight.toFixed(3)}mm.`,
 );
 
+assert.equal(
+  printModel.DEFAULT_PRINTABLE_LAYERS.terrain,
+  false,
+  "Terrain relief should be off in the base layer defaults.",
+);
+
+assert.equal(
+  printModel.shouldEnableTerrainReliefByDefault(baseInput.modelData),
+  true,
+  "High-relief terrain should enable relief by default.",
+);
+
+assert.equal(
+  printModel.shouldEnableTerrainReliefByDefault({
+    ...baseInput.modelData,
+    terrain: {
+      ...baseInput.modelData.terrain,
+      elevations: [0, 5, 0, 5, 20, 5, 0, 5, 0],
+      maxElevationMeters: 20,
+      minElevationMeters: 0,
+    },
+  }),
+  false,
+  "Low-relief terrain should stay flat by default.",
+);
+
 console.log("Terrain relief checks passed.");

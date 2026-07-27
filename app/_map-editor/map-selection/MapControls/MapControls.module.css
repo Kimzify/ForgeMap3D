@@ -249,6 +249,10 @@
   width: auto;
 }
 
+.mobileShapeLabel {
+  display: none;
+}
+
 .radiusControl {
   align-items: center;
   background: rgb(247 247 251 / 74%);
@@ -347,24 +351,121 @@
 }
 
 @media (max-width: 560px) {
+  .controls {
+    bottom: max(10px, env(safe-area-inset-bottom));
+    gap: 7px;
+    left: 10px;
+    top: auto;
+    width: calc(100% - 20px);
+  }
+
+  .search,
+  .shapeToolbar,
+  .generateStatus {
+    border-radius: 7px;
+  }
+
+  .searchForm {
+    min-height: 42px;
+    padding: 4px 10px;
+  }
+
+  .searchForm input {
+    font-size: 14px;
+  }
+
   .shapeToolbar {
-    gap: 6px;
+    display: grid;
+    gap: 5px;
+    grid-template-columns: 1fr;
+    padding: 6px;
     width: 100%;
   }
 
+  .shapeToolSet {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(128px, 1.8fr) repeat(2, minmax(0, 1fr));
+  }
+
   .radiusControl {
-    flex: 1 1 100%;
-    max-width: none;
-    min-height: 42px;
+    min-height: 38px;
+    padding: 0 9px;
     width: 100%;
   }
 
   .radiusControl input {
     inline-size: 100%;
+    min-width: 0;
+  }
+
+  .radiusValue {
+    font-size: 12px;
+    min-width: 50px;
   }
 
   .shapeToolButton {
-    flex: 1 1 0;
+    min-height: 38px;
+  }
+
+  .circleToolButton {
+    justify-content: center;
+  }
+
+  .circleToolButton .shapeLabel {
+    display: none;
+  }
+
+  .circleToolButton .mobileShapeLabel {
+    display: inline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .toolbarActionSet {
+    display: grid;
+    grid-template-columns: 38px 38px minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .toolbarGenerateButton {
+    aspect-ratio: auto;
+    font-size: 13px;
+    font-weight: 850;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 12px;
+    width: 100%;
+  }
+
+  .toolbarGenerateButton span {
+    display: inline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .generateStatus {
+    animation-name: generate-status-mobile-in;
+    gap: 9px;
+    left: 10px;
+    padding: 10px 12px;
+    position: fixed;
+    right: 10px;
+    top: 98px;
+    transform-origin: 24px 0;
+  }
+
+  .generateStatusIcon {
+    inline-size: 28px;
+  }
+
+  .generateStatus strong {
+    font-size: 13px;
+  }
+
+  .generateStatus span {
+    display: none;
   }
 }
 
@@ -372,17 +473,13 @@
   .controls {
     gap: 8px;
     left: 10px;
-    top: 10px;
+    top: auto;
     width: calc(100% - 20px);
   }
 
   .searchForm {
     min-height: 44px;
     padding: 5px 10px;
-  }
-
-  .toolbarGenerateButton span {
-    display: inline;
   }
 
   .toolbarActionSet {
@@ -396,7 +493,7 @@
 
 @media (max-width: 360px) {
   .toolbarGenerateButton span {
-    display: none;
+    display: inline;
   }
 }
 
@@ -415,6 +512,18 @@
 @keyframes generate-status-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes generate-status-mobile-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 

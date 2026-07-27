@@ -42,8 +42,8 @@ const SRTM_MAX_LATITUDE = 60;
 
 export const NETHERLANDS_VIEW = {
   center: {
-    latitude: 52.4388,
-    longitude: 4.827,
+    latitude: 52.3676,
+    longitude: 4.9041,
   },
   cameraHeightMeters: 18000,
   boundsWgs84: {
