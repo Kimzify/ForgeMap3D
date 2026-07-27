@@ -25,6 +25,7 @@ export const ANALYTICS_EVENTS = {
   printModelFailed: "print_model_failed",
   printModelGenerate: "print_model_generate",
   printModelReady: "print_model_ready",
+  printLayerToggle: "print_layer_toggle",
 } as const;
 
 export function trackApiFailure(

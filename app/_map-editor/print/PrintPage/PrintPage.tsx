@@ -12,7 +12,7 @@ import {
 } from "@/lib/analytics";
 import { ICON_SIZES } from "@/lib/constants";
 import { APP_TEXT } from "@/lib/text";
-import type { PrintableModelData } from "@/lib/printModel";
+import type { PrintableLayerKey, PrintableModelData } from "@/lib/printModel";
 import TopBar from "@/components/TopBar";
 import {
   createMapSelectionUrl,
@@ -73,10 +73,23 @@ export default function PrintPage() {
     printModelData: activePrintModelData,
     radiusMeters,
   });
+  const { printLayers, togglePrintLayer: togglePrintLayerState } = printSettings;
 
   const backToMap = useCallback(() => {
     router.push(createMapSelectionUrl(selection, radiusMeters));
   }, [radiusMeters, router, selection]);
+
+  const togglePrintLayer = useCallback(
+    (key: PrintableLayerKey) => {
+      trackAnalyticsEvent(ANALYTICS_EVENTS.printLayerToggle, {
+        enabled: !printLayers[key],
+        layer: key,
+        ...(selection ? selectionAnalyticsData(selection, radiusMeters) : {}),
+      });
+      togglePrintLayerState(key);
+    },
+    [printLayers, radiusMeters, selection, togglePrintLayerState],
+  );
 
   const exportPrintableModel = useCallback(async () => {
     try {
@@ -175,7 +188,7 @@ export default function PrintPage() {
               printSettings.setOpenLandCoverCategory
             }
             onOpenRoadCategoryChange={printSettings.setOpenRoadCategory}
-            onPrintLayerToggle={printSettings.togglePrintLayer}
+            onPrintLayerToggle={togglePrintLayer}
             onPrintStatusChange={setPrintStatus}
             onPrintTabChange={printSettings.setPrintTab}
             openLandCoverCategory={printSettings.openLandCoverCategory}
