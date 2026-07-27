@@ -17,6 +17,8 @@ import {
 } from "@/lib/dataSources";
 import {
   ANALYTICS_EVENTS,
+  missingPrintModelDataTypes,
+  printModelDataAnalyticsData,
   selectionAnalyticsData,
   trackApiFailure,
   trackAnalyticsEvent,
@@ -685,11 +687,18 @@ export default function MapSelectionPage() {
 
         const modelData = payload as PrintableModelData;
         writeCachedPrintModel(selectionQuery, modelData);
-        trackAnalyticsEvent(ANALYTICS_EVENTS.printModelReady, {
-          building_source: modelData.sources.buildings,
-          terrain: modelData.sources.terrain,
-          warnings_count: modelData.warnings.length,
-        });
+        const dataAvailability = printModelDataAnalyticsData(modelData);
+        const missingDataTypes = missingPrintModelDataTypes(modelData);
+        trackAnalyticsEvent(
+          ANALYTICS_EVENTS.printModelReady,
+          dataAvailability,
+        );
+        if (missingDataTypes.length > 0) {
+          trackAnalyticsEvent(ANALYTICS_EVENTS.printModelDataMissing, {
+            ...dataAvailability,
+            missing_data_types: missingDataTypes.join(","),
+          });
+        }
         setAreaStatus(
           modelData.warnings.length > 0
             ? MAP_STATUS.printModelReadyWithWarnings

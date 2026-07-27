@@ -1,5 +1,6 @@
 import type { MapSelection } from "./mapTypes";
 import { selectionShape } from "./mapTypes";
+import type { PrintableModelData } from "./printModel";
 
 type AnalyticsPrimitive = boolean | number | string | null;
 type AnalyticsEventData = Record<string, AnalyticsPrimitive | undefined>;
@@ -20,6 +21,7 @@ export const ANALYTICS_EVENTS = {
   exportReady: "export_ready",
   locationSearch: "location_search",
   locationSearchFailed: "location_search_failed",
+  printModelDataMissing: "print_model_data_missing",
   printModelFailed: "print_model_failed",
   printModelGenerate: "print_model_generate",
   printModelReady: "print_model_ready",
@@ -45,6 +47,72 @@ export function selectionAnalyticsData(
     shape: selectionShape(selection),
     source,
   };
+}
+
+function countBucket(count: number) {
+  if (count === 0) {
+    return "none";
+  }
+
+  if (count <= 10) {
+    return "1_10";
+  }
+
+  if (count <= 50) {
+    return "11_50";
+  }
+
+  if (count <= 200) {
+    return "51_200";
+  }
+
+  return "201_plus";
+}
+
+export function printModelDataAnalyticsData(modelData: PrintableModelData) {
+  const counts = modelData.sourceCounts;
+
+  return {
+    building_source: modelData.sources.buildings,
+    buildings_bucket: countBucket(counts.buildings),
+    has_building_surfaces: counts.buildingSurfaces > 0,
+    has_buildings: counts.buildings > 0,
+    has_land_cover: counts.landCover > 0,
+    has_roads: counts.roads > 0,
+    has_terrain: modelData.sources.terrain,
+    has_water: counts.water > 0,
+    land_cover_bucket: countBucket(counts.landCover),
+    roads_bucket: countBucket(counts.roads),
+    warnings_count: modelData.warnings.length,
+    water_bucket: countBucket(counts.water),
+  };
+}
+
+export function missingPrintModelDataTypes(modelData: PrintableModelData) {
+  const counts = modelData.sourceCounts;
+  const missingTypes: string[] = [];
+
+  if (counts.buildings === 0) {
+    missingTypes.push("buildings");
+  }
+
+  if (counts.roads === 0) {
+    missingTypes.push("roads");
+  }
+
+  if (counts.water === 0) {
+    missingTypes.push("water");
+  }
+
+  if (counts.landCover === 0) {
+    missingTypes.push("land_cover");
+  }
+
+  if (!modelData.sources.terrain) {
+    missingTypes.push("terrain");
+  }
+
+  return missingTypes;
 }
 
 export function trackAnalyticsEvent(

@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import Button from "@/components/Button";
 import {
   ANALYTICS_EVENTS,
+  printModelDataAnalyticsData,
   selectionAnalyticsData,
   trackAnalyticsEvent,
 } from "@/lib/analytics";
@@ -85,8 +86,7 @@ export default function PrintPage() {
 
       trackAnalyticsEvent(ANALYTICS_EVENTS.exportModel, {
         ...selectionAnalyticsData(selection, radiusMeters),
-        building_source: activePrintModelData.sources.buildings,
-        terrain: activePrintModelData.sources.terrain,
+        ...printModelDataAnalyticsData(activePrintModelData),
       });
       setIsExporting(true);
       setPrintStatus(MAP_STATUS.preparingExport);
@@ -94,8 +94,7 @@ export default function PrintPage() {
       await printPreviewRef.current?.exportArchive();
       trackAnalyticsEvent(ANALYTICS_EVENTS.exportReady, {
         ...selectionAnalyticsData(selection, radiusMeters),
-        building_source: activePrintModelData.sources.buildings,
-        terrain: activePrintModelData.sources.terrain,
+        ...printModelDataAnalyticsData(activePrintModelData),
       });
       setPrintStatus(MAP_STATUS.exportReady);
     } catch (error) {
