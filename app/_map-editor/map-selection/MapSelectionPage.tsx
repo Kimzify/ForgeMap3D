@@ -18,6 +18,7 @@ import {
 import {
   ANALYTICS_EVENTS,
   selectionAnalyticsData,
+  trackApiFailure,
   trackAnalyticsEvent,
 } from "@/lib/analytics";
 import {
@@ -93,6 +94,12 @@ const INITIAL_GEOLOCATION_OPTIONS: PositionOptions = {
   maximumAge: INITIAL_GEOLOCATION_MAXIMUM_AGE_MS,
   timeout: INITIAL_GEOLOCATION_TIMEOUT_MS,
 };
+
+class ApiRequestError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+  }
+}
 
 function clampRectangleSideMeters(value: number, center: SelectionCenter) {
   return clampRadiusMeters(
@@ -516,8 +523,9 @@ export default function MapSelectionPage() {
         }
 
         if (!response.ok) {
-          throw new Error(
+          throw new ApiRequestError(
             payload?.error ?? MAP_TEXT.search.failedWithStatus(response.status),
+            response.status,
           );
         }
 
@@ -547,6 +555,10 @@ export default function MapSelectionPage() {
           error instanceof Error ? error.message : MAP_TEXT.search.failed;
         setSearchError(message);
         setIsSearchPanelOpen(true);
+        trackApiFailure(
+          "location_search",
+          error instanceof ApiRequestError ? error.status : undefined,
+        );
         trackAnalyticsEvent(ANALYTICS_EVENTS.locationSearchFailed, {
           select_first: selectFirst,
         });
@@ -660,9 +672,10 @@ export default function MapSelectionPage() {
           | null;
 
         if (!response.ok) {
-          throw new Error(
+          throw new ApiRequestError(
             apiErrorMessage(payload) ??
               MAP_STATUS.requestFailedWithStatus(response.status),
+            response.status,
           );
         }
 
@@ -692,6 +705,10 @@ export default function MapSelectionPage() {
           error instanceof Error ? error.message : MAP_STATUS.printModelFailure;
         setPrintModelGenerationError(message);
         setAreaStatus(message);
+        trackApiFailure(
+          "print_model",
+          error instanceof ApiRequestError ? error.status : undefined,
+        );
         trackAnalyticsEvent(ANALYTICS_EVENTS.printModelFailed, {
           ...selectionAnalyticsData(nextSelection, radiusMeters),
         });
@@ -737,17 +754,24 @@ export default function MapSelectionPage() {
       try {
         const response = await fetch("/api/config");
         if (!response.ok) {
-          throw new Error(MAP_STATUS.configFailedWithStatus(response.status));
+          throw new ApiRequestError(
+            MAP_STATUS.configFailedWithStatus(response.status),
+            response.status,
+          );
         }
 
         const nextConfig = (await response.json()) as AppConfig;
         if (isMounted) {
           setConfig(nextConfig);
         }
-      } catch {
+      } catch (error) {
         if (isMounted) {
           setConfig(APP_CONFIG);
         }
+        trackApiFailure(
+          "app_config",
+          error instanceof ApiRequestError ? error.status : undefined,
+        );
       }
     }
 

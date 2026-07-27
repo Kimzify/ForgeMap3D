@@ -78,6 +78,7 @@ export default function RootLayout({
         {children}
         {umamiWebsiteId ? (
           <Script
+            data-exclude-search="true"
             data-website-id={umamiWebsiteId}
             id="umami-analytics"
             src={umamiScriptUrl}

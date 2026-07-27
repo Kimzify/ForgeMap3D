@@ -13,6 +13,7 @@ declare global {
 }
 
 export const ANALYTICS_EVENTS = {
+  apiFailed: "api_failed",
   areaSelected: "area_selected",
   exportFailed: "export_failed",
   exportModel: "export_model",
@@ -23,6 +24,16 @@ export const ANALYTICS_EVENTS = {
   printModelGenerate: "print_model_generate",
   printModelReady: "print_model_ready",
 } as const;
+
+export function trackApiFailure(
+  apiName: "app_config" | "location_search" | "print_model",
+  status?: number,
+) {
+  trackAnalyticsEvent(ANALYTICS_EVENTS.apiFailed, {
+    api: apiName,
+    status,
+  });
+}
 
 export function selectionAnalyticsData(
   selection: MapSelection,
