@@ -1,6 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
+
+const DEFAULT_UMAMI_WEBSITE_ID = "6156ff41-c3c3-4d09-b01e-f0ced6c8e20c";
+const umamiWebsiteId =
+  process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID?.trim() ||
+  (process.env.NODE_ENV === "production" ? DEFAULT_UMAMI_WEBSITE_ID : undefined);
+const umamiScriptUrl =
+  process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL?.trim() ||
+  "https://cloud.umami.is/script.js";
 
 export const metadata: Metadata = {
   metadataBase: SITE_URL,
@@ -65,7 +74,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        {umamiWebsiteId ? (
+          <Script
+            data-website-id={umamiWebsiteId}
+            id="umami-analytics"
+            src={umamiScriptUrl}
+            strategy="afterInteractive"
+          />
+        ) : null}
+      </body>
     </html>
   );
 }

@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Button from "@/components/Button";
+import {
+  ANALYTICS_EVENTS,
+  selectionAnalyticsData,
+  trackAnalyticsEvent,
+} from "@/lib/analytics";
 import { ICON_SIZES } from "@/lib/constants";
 import { APP_TEXT } from "@/lib/text";
 import type { PrintableModelData } from "@/lib/printModel";
@@ -74,23 +79,38 @@ export default function PrintPage() {
 
   const exportPrintableModel = useCallback(async () => {
     try {
-      if (!activePrintModelData) {
+      if (!activePrintModelData || !selection) {
         throw new Error(MAP_STATUS.exportUnavailable);
       }
 
+      trackAnalyticsEvent(ANALYTICS_EVENTS.exportModel, {
+        ...selectionAnalyticsData(selection, radiusMeters),
+        building_source: activePrintModelData.sources.buildings,
+        terrain: activePrintModelData.sources.terrain,
+      });
       setIsExporting(true);
       setPrintStatus(MAP_STATUS.preparingExport);
       await waitForNextPaint();
       await printPreviewRef.current?.exportArchive();
+      trackAnalyticsEvent(ANALYTICS_EVENTS.exportReady, {
+        ...selectionAnalyticsData(selection, radiusMeters),
+        building_source: activePrintModelData.sources.buildings,
+        terrain: activePrintModelData.sources.terrain,
+      });
       setPrintStatus(MAP_STATUS.exportReady);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : MAP_STATUS.exportFailure;
       setPrintStatus(message);
+      if (selection) {
+        trackAnalyticsEvent(ANALYTICS_EVENTS.exportFailed, {
+          ...selectionAnalyticsData(selection, radiusMeters),
+        });
+      }
     } finally {
       setIsExporting(false);
     }
-  }, [activePrintModelData]);
+  }, [activePrintModelData, radiusMeters, selection]);
 
   useEffect(() => {
     if (!selection || selectionQuery === null) {

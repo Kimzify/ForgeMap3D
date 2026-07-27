@@ -16,6 +16,11 @@ import {
   type AppConfig,
 } from "@/lib/dataSources";
 import {
+  ANALYTICS_EVENTS,
+  selectionAnalyticsData,
+  trackAnalyticsEvent,
+} from "@/lib/analytics";
+import {
   createLocalMetricProjection,
   isSupportedLocation,
   maximumRadiusForLocation,
@@ -440,6 +445,10 @@ export default function MapSelectionPage() {
       selectedSearchLabelRef.current = result.label;
       setSearchQuery(result.label);
       setSearchError(null);
+      trackAnalyticsEvent(ANALYTICS_EVENTS.areaSelected, {
+        ...selectionAnalyticsData(nextSelection, nextRadiusMeters, "search"),
+        result_type: result.type,
+      });
 
       if (closePanel) {
         setSearchResults([]);
@@ -514,6 +523,10 @@ export default function MapSelectionPage() {
 
         const results = payload?.results ?? [];
         setSearchResults(results);
+        trackAnalyticsEvent(ANALYTICS_EVENTS.locationSearch, {
+          result_count: results.length,
+          select_first: selectFirst,
+        });
 
         if (results.length === 0) {
           setSearchError(MAP_TEXT.search.noResults);
@@ -534,6 +547,9 @@ export default function MapSelectionPage() {
           error instanceof Error ? error.message : MAP_TEXT.search.failed;
         setSearchError(message);
         setIsSearchPanelOpen(true);
+        trackAnalyticsEvent(ANALYTICS_EVENTS.locationSearchFailed, {
+          select_first: selectFirst,
+        });
       } finally {
         if (!signal?.aborted && searchRequestIdRef.current === requestId) {
           setIsSearchLoading(false);
@@ -628,6 +644,9 @@ export default function MapSelectionPage() {
     setIsPrintModelGenerating(true);
     setPrintModelGenerationError(null);
     setAreaStatus(MAP_STATUS.loadingPrintModel);
+    trackAnalyticsEvent(ANALYTICS_EVENTS.printModelGenerate, {
+      ...selectionAnalyticsData(nextSelection, radiusMeters),
+    });
 
     async function buildPrintModel() {
       try {
@@ -653,6 +672,11 @@ export default function MapSelectionPage() {
 
         const modelData = payload as PrintableModelData;
         writeCachedPrintModel(selectionQuery, modelData);
+        trackAnalyticsEvent(ANALYTICS_EVENTS.printModelReady, {
+          building_source: modelData.sources.buildings,
+          terrain: modelData.sources.terrain,
+          warnings_count: modelData.warnings.length,
+        });
         setAreaStatus(
           modelData.warnings.length > 0
             ? MAP_STATUS.printModelReadyWithWarnings
@@ -668,6 +692,9 @@ export default function MapSelectionPage() {
           error instanceof Error ? error.message : MAP_STATUS.printModelFailure;
         setPrintModelGenerationError(message);
         setAreaStatus(message);
+        trackAnalyticsEvent(ANALYTICS_EVENTS.printModelFailed, {
+          ...selectionAnalyticsData(nextSelection, radiusMeters),
+        });
       } finally {
         if (!controller.signal.aborted) {
           setIsPrintModelGenerating(false);
@@ -914,6 +941,7 @@ export default function MapSelectionPage() {
         const finalRadius = pendingDraftRadiusRef.current ?? draftRadiusRef.current;
         const finalSelection =
           pendingDraftSelectionRef.current ?? draftSelectionRef.current;
+        const completedDraw = drawStartRef.current !== null;
         pendingDraftSelectionRef.current = null;
         pendingDraftRadiusRef.current = null;
         if (finalSelection) {
@@ -925,6 +953,11 @@ export default function MapSelectionPage() {
 
         if (drawStartRef.current) {
           setAreaStatus(MAP_STATUS.areaSelected);
+        }
+        if (completedDraw && finalSelection) {
+          trackAnalyticsEvent(ANALYTICS_EVENTS.areaSelected, {
+            ...selectionAnalyticsData(finalSelection, finalRadius, "draw"),
+          });
         }
 
         drawStartRef.current = null;
