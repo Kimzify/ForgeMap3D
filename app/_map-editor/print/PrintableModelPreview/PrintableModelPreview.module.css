@@ -75,6 +75,22 @@
   line-height: 1.4;
 }
 
+.loadingSpinner {
+  animation: preview-spin 0.8s linear infinite;
+  border: 2px solid rgb(104 98 112 / 18%);
+  border-top-color: #34303a;
+  border-radius: 999px;
+  height: 22px;
+  justify-self: center;
+  width: 22px;
+}
+
+@keyframes preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 560px) {
   .sizeCard {
     display: none;

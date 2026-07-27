@@ -6,6 +6,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -106,6 +107,7 @@ const TERRAIN_SURFACE_COLOR = "#fff8df";
 const CIRCLE_GEOMETRY_SEGMENTS = 256;
 const DRAPED_LAND_COVER_CLEARANCE_MM = 0.35;
 const TERRAIN_RADIAL_RINGS = 20;
+const PREVIEW_UPDATE_PAINT_DELAY_MS = 60;
 
 function createPreviewView(size: PrintableSize): PreviewView {
   const viewRadius = Math.max(
@@ -1771,6 +1773,7 @@ const PrintableModelPreview = forwardRef<
   const modelRef = useRef<THREE.Group | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const [isPreviewUpdating, setIsPreviewUpdating] = useState(false);
   const size = useMemo(
     () => getPrintableModelSize(radiusMeters, modelSettings),
     [modelSettings, radiusMeters],
@@ -2004,25 +2007,40 @@ const PrintableModelPreview = forwardRef<
       return;
     }
 
-    const model = createPrintableModel({
-      errorMessage,
-      isLoading,
-      layers,
-      modelData,
-      modelSettings,
-      radiusMeters,
-      selection,
-      size,
-    });
-    modelRef.current = model;
-    scene.add(model);
+    let isCancelled = false;
+    setIsPreviewUpdating(Boolean(modelData && !errorMessage && !isLoading));
+
+    const updateTimer = window.setTimeout(() => {
+      const model = createPrintableModel({
+        errorMessage,
+        isLoading,
+        layers,
+        modelData,
+        modelSettings,
+        radiusMeters,
+        selection,
+        size,
+      });
+
+      if (isCancelled) {
+        disposeObject(model);
+        return;
+      }
+
+      const previousModel = modelRef.current;
+      if (previousModel) {
+        scene.remove(previousModel);
+        disposeObject(previousModel);
+      }
+
+      modelRef.current = model;
+      scene.add(model);
+      setIsPreviewUpdating(false);
+    }, PREVIEW_UPDATE_PAINT_DELAY_MS);
 
     return () => {
-      scene.remove(model);
-      disposeObject(model);
-      if (modelRef.current === model) {
-        modelRef.current = null;
-      }
+      isCancelled = true;
+      window.clearTimeout(updateTimer);
     };
   }, [
     errorMessage,
@@ -2062,16 +2080,26 @@ const PrintableModelPreview = forwardRef<
         <strong>{PREVIEW_TEXT.finalSize(diameterMm, heightMm)}</strong>
         <span>{PREVIEW_TEXT.mapSide(mapSideMm)}</span>
       </div>
-      {isLoading || errorMessage || !modelData ? (
+      {isLoading || isPreviewUpdating || errorMessage || !modelData ? (
         <div className={styles.loading} role="status">
+          {isPreviewUpdating ? (
+            <div className={styles.loadingSpinner} aria-hidden="true" />
+          ) : null}
           <strong>
             {errorMessage
               ? PREVIEW_TEXT.errorTitle
               : isLoading
                 ? PREVIEW_TEXT.loading
-                : PREVIEW_TEXT.waitingForMapData}
+                : isPreviewUpdating
+                  ? PREVIEW_TEXT.updating
+                  : PREVIEW_TEXT.waitingForMapData}
           </strong>
-          <span>{errorMessage ?? PREVIEW_TEXT.fetchingData}</span>
+          <span>
+            {errorMessage ??
+              (isPreviewUpdating
+                ? PREVIEW_TEXT.updatingDetail
+                : PREVIEW_TEXT.fetchingData)}
+          </span>
         </div>
       ) : null}
     </section>

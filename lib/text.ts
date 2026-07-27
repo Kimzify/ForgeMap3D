@@ -157,6 +157,8 @@ export const APP_TEXT = {
       `Final size: ${diameterMm} × ${diameterMm} × ${heightMm} mm`,
     loading: "Loading map data",
     mapSide: (mapSideMm: number) => `Map side: ${mapSideMm} mm`,
+    updating: "Updating preview",
+    updatingDetail: "Applying the latest model settings.",
     waitingForMapData: "Waiting for map data",
   },
   printSettings: {
