@@ -29,7 +29,7 @@
     "@mapbox/vector-tile": "^3.0.0",
     "cesium": "^1.143.0",
     "lucide-react": "^1.25.0",
-    "next": "^16.2.11",
+    "next": "^16.2.12",
     "pbf": "^5.1.2",
     "pmtiles": "^4.4.1",
     "polygon-clipping": "^0.15.7",
