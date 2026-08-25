@@ -10,7 +10,9 @@ services:
       HOSTNAME: 0.0.0.0
       NEXT_TELEMETRY_DISABLED: "1"
       NODE_ENV: production
+      OVERPASS_INTERPRETER_URLS: ${OVERPASS_INTERPRETER_URLS:-}
       PORT: "3000"
+      TRACESTRACK_API_KEY: ${TRACESTRACK_API_KEY:-}
     restart: unless-stopped
     healthcheck:
       test:

@@ -53,7 +53,12 @@ export const maxDuration = 120;
 
 const THREE_DBAG_WFS_URL = "https://data.3dbag.nl/api/BAG3D/wfs";
 const THREE_DBAG_TILE_TYPENAME = "BAG3D:Tiles";
-const OVERPASS_URLS = [
+type OverpassEndpoint = {
+  name: string;
+  url: string;
+};
+
+const DEFAULT_OVERPASS_URLS: OverpassEndpoint[] = [
   {
     name: "maps.mail.ru",
     url: "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
@@ -235,6 +240,60 @@ function compactResponseText(text: string) {
   }
 
   return compact.slice(0, 160);
+}
+
+function overpassEndpointName(url: URL) {
+  const path = url.pathname.replace(/\/+$/, "");
+
+  return path ? `${url.hostname}${path}` : url.hostname;
+}
+
+function configuredOverpassUrls() {
+  return process.env.OVERPASS_INTERPRETER_URLS?.split(",")
+    .map((url) => url.trim())
+    .filter(Boolean) ?? [];
+}
+
+function tracestrackOverpassEndpoint() {
+  const apiKey = process.env.TRACESTRACK_API_KEY?.trim();
+
+  return apiKey
+    ? {
+        name: "tracestrack",
+        url: `https://tile.tracestrack.com/overpass/${encodeURIComponent(apiKey)}/interpreter`,
+      }
+    : null;
+}
+
+function overpassEndpoints() {
+  const configuredEndpoints = configuredOverpassUrls().flatMap((url) => {
+    try {
+      const parsed = new URL(url);
+
+      return [{
+        name: overpassEndpointName(parsed),
+        url: parsed.toString(),
+      }];
+    } catch {
+      return [];
+    }
+  });
+  const tracestrackEndpoint = tracestrackOverpassEndpoint();
+  const endpoints = [
+    ...(tracestrackEndpoint ? [tracestrackEndpoint] : []),
+    ...configuredEndpoints,
+    ...DEFAULT_OVERPASS_URLS,
+  ];
+  const seen = new Set<string>();
+
+  return endpoints.filter((endpoint) => {
+    if (seen.has(endpoint.url)) {
+      return false;
+    }
+
+    seen.add(endpoint.url);
+    return true;
+  });
 }
 
 function overpassErrorMessage(error: unknown) {
@@ -839,7 +898,7 @@ out geom(${box}) 950;`;
 }
 
 async function fetchOsmFromUrl(
-  endpoint: (typeof OVERPASS_URLS)[number],
+  endpoint: OverpassEndpoint,
   bbox: WgsBbox,
   layer: OsmLayerKey,
   signal: AbortSignal,
@@ -879,7 +938,7 @@ async function fetchOsmLayer(
   let lastError: unknown = null;
   const attemptErrors: string[] = [];
 
-  for (const endpoint of OVERPASS_URLS) {
+  for (const endpoint of overpassEndpoints()) {
     try {
       return await fetchOsmFromUrl(
         endpoint,

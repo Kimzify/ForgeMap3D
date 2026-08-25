@@ -37,6 +37,11 @@ Click the preview to watch the full workflow video.
 
 No API keys are required. `NOMINATIM_BASE_URL` can optionally point global
 search at a self-hosted or third-party Nominatim-compatible service.
+`TRACESTRACK_API_KEY` can optionally enable Tracestrack's hosted Overpass API
+for OpenStreetMap geometry. `OVERPASS_INTERPRETER_URLS` can optionally point
+OpenStreetMap geometry fetches at one or more comma-separated full
+Overpass-compatible interpreter URLs; these are tried after Tracestrack and
+before the built-in public fallback mirrors.
 `OVERTURE_BUILDINGS_PM_TILES_URL` can optionally pin a specific Overture
 buildings archive; otherwise the latest public release is discovered.
 
