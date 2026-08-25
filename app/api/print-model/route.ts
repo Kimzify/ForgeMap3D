@@ -80,8 +80,10 @@ const OSM_STALE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const OSM_CACHE_MAX_ENTRIES = 40;
 const OSM_BUILDING_DEFAULT_HEIGHT_METERS = 9;
 const OSM_BUILDING_LEVEL_HEIGHT_METERS = 3.2;
+const OSM_BUILDING_LIMIT = 4000;
 const OSM_BUILDING_MAX_HEIGHT_METERS = 80;
 const OSM_BUILDING_MIN_HEIGHT_METERS = 2.5;
+const OSM_BUILDING_QUERY_LIMIT = 5000;
 const OSM_WATERWAY_MAX_WIDTH_METERS = 100;
 const OSM_WATERWAY_MIN_WIDTH_METERS = 0.5;
 const OVERTURE_BUILDING_LIMIT = 4000;
@@ -801,7 +803,7 @@ type OsmLayerKey = "buildings" | "land" | "roads" | "water";
 
 function osmCacheKey(bbox: WgsBbox) {
   return [
-    "v4",
+    "v5",
     ...[bbox.south, bbox.west, bbox.north, bbox.east].map((value) =>
       value.toFixed(6),
     ),
@@ -868,7 +870,7 @@ function osmQuery(bbox: WgsBbox, layer: OsmLayerKey) {
 (
   way["building"](${box});
 );
-out geom(${box}) 650;`;
+out geom(${box}) ${OSM_BUILDING_QUERY_LIMIT};`;
   }
 
   if (layer === "water") {
@@ -1504,7 +1506,13 @@ function classifyOsm(
   }
 
   return {
-    buildings: buildings.slice(0, 500),
+    buildings: buildings
+      .sort(
+        (left, right) =>
+          pointDistance(surfaceCentroid(left.surfaces[0])) -
+          pointDistance(surfaceCentroid(right.surfaces[0])),
+      )
+      .slice(0, OSM_BUILDING_LIMIT),
     landCover: landCover.slice(0, 120),
     roads: roads.slice(0, 800),
     water: water.slice(0, 120),
