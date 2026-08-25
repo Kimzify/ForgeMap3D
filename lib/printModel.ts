@@ -203,6 +203,11 @@ export type PrintableModelData = {
   waterLines: PrintableLine[];
 };
 
+export type PrintableModelSizeOptions = {
+  layers?: PrintableLayers;
+  modelData?: PrintableModelData | null;
+};
+
 export const DEFAULT_PRINTABLE_LAYERS: PrintableLayers = {
   buildings: true,
   roads: true,
@@ -230,6 +235,22 @@ export function shouldEnableTerrainReliefByDefault(
     terrainElevationRangeMeters(modelData?.terrain) >=
     PRINTABLE_TERRAIN_RELIEF_DEFAULT_MIN_RANGE_METERS
   );
+}
+
+export function maxPrintableBuildingHeightMeters(
+  modelData: PrintableModelData | null | undefined,
+) {
+  let maxHeight = 0;
+
+  for (const building of modelData?.buildings ?? []) {
+    for (const surface of building.surfaces) {
+      for (const point of surface) {
+        maxHeight = Math.max(maxHeight, point.z);
+      }
+    }
+  }
+
+  return maxHeight;
 }
 
 export const PRINTABLE_DIMENSION_LIMITS = {
@@ -864,6 +885,7 @@ export function getDefaultPrintableMapSideMm(radiusMeters: number) {
 export function getPrintableModelSize(
   radiusMeters: number,
   settings = DEFAULT_PRINTABLE_MODEL_SETTINGS,
+  options?: PrintableModelSizeOptions,
 ) {
   const totalSideMm = settings.dimensions.resizeForPrint
     ? clampPrintableValue(
@@ -883,7 +905,29 @@ export function getPrintableModelSize(
     : 0;
   const mapSideMm = Math.max(totalSideMm - frameWidthMm * 2, 1);
   const terrainHeightMm = Math.round(Math.min(Math.max(mapSideMm / 14, 8), 18));
-  const mapStackHeightMm = baseHeightMm + terrainHeightMm;
+  let contentHeightMm = terrainHeightMm;
+
+  if (options) {
+    const layers = options.layers ?? DEFAULT_PRINTABLE_LAYERS;
+    const horizontalScale = mapSideMm / 2 / Math.max(radiusMeters, 1);
+    const buildingHeightMm = layers.buildings
+      ? Math.max(0, settings.layers.buildings.verticalOffsetMm) +
+        maxPrintableBuildingHeightMeters(options.modelData) *
+          horizontalScale *
+          settings.layers.buildings.heightExaggeration
+      : 0;
+    const terrainReliefHeightMm = layers.terrain
+      ? terrainElevationRangeMeters(options.modelData?.terrain) *
+        horizontalScale *
+        settings.layers.terrain.verticalExaggeration
+      : 0;
+
+    contentHeightMm = settings.dimensions.lockModelHeight
+      ? terrainHeightMm
+      : terrainReliefHeightMm + buildingHeightMm;
+  }
+
+  const mapStackHeightMm = baseHeightMm + contentHeightMm;
   const heightMm = Math.max(frameHeightMm, mapStackHeightMm);
 
   return {

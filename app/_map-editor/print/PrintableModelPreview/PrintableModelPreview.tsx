@@ -33,6 +33,7 @@ import {
   getPrintableModelSize,
   getPrintableRoadCategory,
   getRoadCategoryWidthMm,
+  maxPrintableBuildingHeightMeters,
   PRINTABLE_LAND_COVER_CATEGORIES,
   PRINTABLE_ROAD_CATEGORIES,
   type ModelPoint,
@@ -201,24 +202,6 @@ function layerLift(liftMm: number) {
   return Math.max(liftMm, MIN_LAYER_LIFT_MM);
 }
 
-function maxBuildingHeightMeters(modelData: PrintableModelData | null) {
-  if (!modelData) {
-    return 0;
-  }
-
-  let maxHeight = 0;
-
-  for (const building of modelData.buildings) {
-    for (const surface of building.surfaces) {
-      for (const point of surface) {
-        maxHeight = Math.max(maxHeight, point.z);
-      }
-    }
-  }
-
-  return maxHeight;
-}
-
 function activeTerrainData(input: ModelInput) {
   return input.layers.terrain ? input.modelData?.terrain ?? null : null;
 }
@@ -241,7 +224,7 @@ function createModelMetrics(input: ModelInput): ModelMetrics {
   const autoTerrainVerticalScale =
     horizontalScale * input.modelSettings.layers.terrain.verticalExaggeration;
   const lockedHeightMm = Math.max(input.size.heightMm - input.size.baseHeightMm, 1);
-  const maxHeightMeters = maxBuildingHeightMeters(input.modelData);
+  const maxHeightMeters = maxPrintableBuildingHeightMeters(input.modelData);
   const terrainHeightMeters = terrainReliefMeters(input);
   const autoMaxHeightMm =
     terrainHeightMeters * autoTerrainVerticalScale +
@@ -1775,8 +1758,12 @@ const PrintableModelPreview = forwardRef<
   const sceneRef = useRef<THREE.Scene | null>(null);
   const [isPreviewUpdating, setIsPreviewUpdating] = useState(false);
   const size = useMemo(
-    () => getPrintableModelSize(radiusMeters, modelSettings),
-    [modelSettings, radiusMeters],
+    () =>
+      getPrintableModelSize(radiusMeters, modelSettings, {
+        layers,
+        modelData,
+      }),
+    [layers, modelData, modelSettings, radiusMeters],
   );
   const initialSizeRef = useRef(size);
   const { diameterMm, heightMm, mapSideMm } = size;

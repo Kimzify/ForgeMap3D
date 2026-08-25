@@ -383,8 +383,12 @@ export function usePrintSettings({
   );
 
   const printableSize = useMemo(
-    () => getPrintableModelSize(radiusMeters, printModelSettings),
-    [printModelSettings, radiusMeters],
+    () =>
+      getPrintableModelSize(radiusMeters, printModelSettings, {
+        layers: printLayers,
+        modelData: printModelData,
+      }),
+    [printLayers, printModelData, printModelSettings, radiusMeters],
   );
 
   const roadCategoryCounts = useMemo(() => {
