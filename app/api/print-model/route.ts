@@ -52,7 +52,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const THREE_DBAG_WFS_URL = "https://data.3dbag.nl/api/BAG3D/wfs";
-const THREE_DBAG_TILE_TYPENAME = "BAG3D:Tiles";
+const THREE_DBAG_TILE_TYPENAME = "BAG3D:tiles";
 type OverpassEndpoint = {
   name: string;
   url: string;
