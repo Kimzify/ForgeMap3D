@@ -70,6 +70,10 @@ import {
   getMapEditorRouteState,
   selectionQueryParams,
 } from "../utils/urlState";
+import {
+  readLocalMapGenerationDefaults,
+  updateLocalMapGenerationDefaults,
+} from "../utils/localDefaults";
 import { writeCachedPrintModel } from "../print/printModelCache";
 import MapPane from "./MapPane";
 import type {
@@ -263,6 +267,21 @@ export default function MapSelectionPage() {
     () => getMapEditorRouteState(new URLSearchParams(routeQuery)),
     [routeQuery],
   );
+  const [initialLocalDefaults] = useState(() =>
+    routeQuery === "" && !routeState.selection
+      ? readLocalMapGenerationDefaults()
+      : null,
+  );
+  const initialRadiusMeters =
+    initialLocalDefaults?.radiusMeters !== undefined
+      ? clampRadiusMeters(
+          initialLocalDefaults.radiusMeters,
+          MIN_RADIUS_METERS,
+          MAX_RADIUS_METERS,
+        )
+      : routeState.radiusMeters;
+  const initialPreferredSelectionShape =
+    initialLocalDefaults?.selectionShape ?? selectionShape(routeState.selection);
   const mapRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<CesiumViewer | null>(null);
   const cesiumRef = useRef<CesiumModule | null>(null);
@@ -271,7 +290,7 @@ export default function MapSelectionPage() {
   const drawStartRef = useRef<SelectionCenter | null>(null);
   const drawShapeRef = useRef<SelectionShape | null>(null);
   const draftSelectionRef = useRef<MapSelection | null>(routeState.selection);
-  const draftRadiusRef = useRef(routeState.radiusMeters);
+  const draftRadiusRef = useRef(initialRadiusMeters);
   const pendingDraftRadiusRef = useRef<number | null>(null);
   const pendingDraftSelectionRef = useRef<MapSelection | null>(null);
   const draftRadiusAnimationFrameRef = useRef<number | null>(null);
@@ -287,7 +306,9 @@ export default function MapSelectionPage() {
   const [selection, setSelection] = useState<MapSelection | null>(
     routeState.selection,
   );
-  const [radiusMeters, setRadiusMeters] = useState(routeState.radiusMeters);
+  const [radiusMeters, setRadiusMeters] = useState(initialRadiusMeters);
+  const [preferredSelectionShape, setPreferredSelectionShape] =
+    useState<SelectionShape>(initialPreferredSelectionShape);
   const [mapStatus, setMapStatus] = useState<string>(
     MAP_STATUS.loadingMapData,
   );
@@ -327,7 +348,16 @@ export default function MapSelectionPage() {
   );
   const selectedLatitude = selection?.latitude ?? null;
   const selectedLongitude = selection?.longitude ?? null;
-  const selectedSelectionShape = selectionShape(selection);
+  const selectedSelectionShape = selection
+    ? selectionShape(selection)
+    : preferredSelectionShape;
+
+  useEffect(() => {
+    updateLocalMapGenerationDefaults({
+      radiusMeters,
+      selectionShape: selectedSelectionShape,
+    });
+  }, [radiusMeters, selectedSelectionShape]);
 
   useEffect(() => {
     activeDrawShapeRef.current = activeDrawShape;
@@ -419,7 +449,7 @@ export default function MapSelectionPage() {
         latitude: result.latitude,
         longitude: result.longitude,
       };
-      const nextShape = activeDrawShapeRef.current ?? selectionShape(selection);
+      const nextShape = activeDrawShapeRef.current ?? selectedSelectionShape;
       const nextSelection = centeredSelectionForShape(
         center,
         nextShape,
@@ -483,7 +513,12 @@ export default function MapSelectionPage() {
       });
       viewer.scene.requestRender();
     },
-    [config.view.cameraHeightMeters, radiusMeters, selection],
+    [
+      config.view.cameraHeightMeters,
+      radiusMeters,
+      selectedSelectionShape,
+      selection,
+    ],
   );
 
   const runLocationSearch = useCallback(
@@ -633,6 +668,7 @@ export default function MapSelectionPage() {
   const toggleShapeDrawing = useCallback((shape: SelectionShape) => {
     const nextShape =
       activeDrawShape === shape && !isDrawingSelection ? null : shape;
+    setPreferredSelectionShape(shape);
     setActiveDrawShape(nextShape);
 
     if (nextShape) {

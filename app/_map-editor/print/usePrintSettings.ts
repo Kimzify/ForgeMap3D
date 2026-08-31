@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   clampPrintableValue,
   createDefaultPrintableModelSettings,
@@ -27,6 +27,12 @@ import type {
   ModelSettingsSectionKey,
   PrintTab,
 } from "../types";
+import {
+  mergePrintableLayersWithLocalDefaults,
+  mergePrintableModelSettingsWithLocalDefaults,
+  readLocalMapGenerationDefaults,
+  updateLocalMapGenerationDefaults,
+} from "../utils/localDefaults";
 import type { UsePrintSettingsParams } from "./usePrintSettings.types";
 
 const EMPTY_CATEGORY_COUNT = 0;
@@ -50,7 +56,10 @@ export function usePrintSettings({
   radiusMeters,
 }: UsePrintSettingsParams) {
   const [printLayers, setPrintLayers] = useState<PrintableLayers>(() =>
-    defaultPrintableLayersForModelData(printModelData),
+    mergePrintableLayersWithLocalDefaults(
+      defaultPrintableLayersForModelData(printModelData),
+      readLocalMapGenerationDefaults()?.printLayers,
+    ),
   );
   const [printTab, setPrintTab] = useState<PrintTab>("model");
   const [openModelSections, setOpenModelSections] = useState<
@@ -75,7 +84,19 @@ export function usePrintSettings({
   const [openLandCoverCategory, setOpenLandCoverCategory] =
     useState<PrintableLandCoverCategoryKey | null>("grass");
   const [printModelSettings, setPrintModelSettings] =
-    useState<PrintableModelSettings>(createDefaultPrintableModelSettings);
+    useState<PrintableModelSettings>(() =>
+      mergePrintableModelSettingsWithLocalDefaults(
+        createDefaultPrintableModelSettings(),
+        readLocalMapGenerationDefaults()?.printModelSettings,
+      ),
+    );
+
+  useEffect(() => {
+    updateLocalMapGenerationDefaults({
+      printLayers,
+      printModelSettings,
+    });
+  }, [printLayers, printModelSettings]);
 
   const togglePrintLayer = useCallback((key: PrintableLayerKey) => {
     setPrintLayers((current) => ({
