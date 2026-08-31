@@ -267,6 +267,27 @@ assertTopColorAt(
   settings.layers.water.color,
   "a centerline canal cut into land cover",
 );
+const narrowLineInput = JSON.parse(JSON.stringify(input));
+narrowLineInput.modelData.water = [];
+narrowLineInput.modelData.waterLines = [
+  {
+    kind: "drain",
+    points: [
+      { x: -40, y: -25 },
+      { x: 40, y: -25 },
+    ],
+    widthMeters: 0.2,
+  },
+];
+const narrowLineGroup = preview.createPrintableModel(narrowLineInput);
+narrowLineGroup.updateMatrixWorld(true);
+assertTopColorAt(
+  narrowLineGroup,
+  0,
+  25,
+  settings.layers.water.color,
+  "a sub-minimum-width waterway widened through urban land cover",
+);
 assertTopColorAt(
   group,
   0,

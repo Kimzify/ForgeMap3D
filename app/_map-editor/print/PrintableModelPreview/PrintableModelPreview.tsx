@@ -1346,11 +1346,7 @@ function visibleWaterFeatures(input: ModelInput, metrics: ModelMetrics) {
         stats.areaMm2 < settings.minimumAreaMm2)
     );
   });
-  const waterLines = input.modelData.waterLines.filter(
-    (line) =>
-      !settings.hideSmallWaterBodies ||
-      waterLineWidthMm(line, metrics) >= settings.minimumWidthMm,
-  );
+  const waterLines = input.modelData.waterLines;
 
   return {
     mask: createWaterMask(
