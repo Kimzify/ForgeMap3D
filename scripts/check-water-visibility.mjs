@@ -172,6 +172,22 @@ const input = {
     totalSideMm: 104,
   },
 };
+
+function flatTerrain(radiusMeters) {
+  return {
+    attribution: "Synthetic flat terrain",
+    columns: 2,
+    elevations: [0, 0, 0, 0],
+    maxElevationMeters: 0,
+    minElevationMeters: 0,
+    minX: -radiusMeters,
+    minY: -radiusMeters,
+    rows: 2,
+    source: "test",
+    spacingMeters: radiusMeters * 2,
+  };
+}
+
 input.modelData.roads.push({
   kind: "residential",
   points: [
@@ -185,8 +201,9 @@ group.updateMatrixWorld(true);
 
 function colorOfMaterial(material) {
   assert.ok(
-    material instanceof THREE.MeshStandardMaterial,
-    "The sampled layer should use a standard material.",
+    material instanceof THREE.MeshStandardMaterial ||
+      material instanceof THREE.MeshBasicMaterial,
+    "The sampled layer should use a color material.",
   );
 
   return `#${material.color.getHexString()}`;
@@ -305,18 +322,7 @@ assertTopColorAt(
 
 const reliefInput = JSON.parse(JSON.stringify(input));
 reliefInput.layers.terrain = true;
-reliefInput.modelData.terrain = {
-  attribution: "Synthetic terrain",
-  columns: 2,
-  elevations: [0, 0, 0, 0],
-  maxElevationMeters: 0,
-  minElevationMeters: 0,
-  minX: -50,
-  minY: -50,
-  rows: 2,
-  source: "opentopodata-srtm30m",
-  spacingMeters: 100,
-};
+reliefInput.modelData.terrain = flatTerrain(50);
 const reliefGroup = preview.createPrintableModel(reliefInput);
 reliefGroup.updateMatrixWorld(true);
 assertTopColorAt(
@@ -392,6 +398,40 @@ assert.ok(
   "Land height 1.3mm must place dry earth above water height 1mm even without an urban land-cover polygon.",
 );
 
+const urbanWaterCoverData = JSON.parse(
+  readFileSync(
+    path.join(projectRoot, "scripts/fixtures/amsterdam-urban-water-cover.json"),
+    "utf8",
+  ),
+);
+const urbanWaterCoverInput = {
+  ...input,
+  layers: {
+    ...input.layers,
+    roads: false,
+    terrain: true,
+  },
+  modelData: {
+    ...urbanWaterCoverData,
+    terrain: flatTerrain(urbanWaterCoverData.radiusMeters),
+  },
+  radiusMeters: urbanWaterCoverData.radiusMeters,
+  size: printModel.getPrintableModelSize(
+    urbanWaterCoverData.radiusMeters,
+    settings,
+  ),
+};
+const urbanWaterCoverGroup = preview.createPrintableModel(urbanWaterCoverInput);
+const urbanWaterCoverMetrics = preview.createModelMetrics(urbanWaterCoverInput);
+urbanWaterCoverGroup.updateMatrixWorld(true);
+assertTopColorAt(
+  urbanWaterCoverGroup,
+  163.31006738523774 * urbanWaterCoverMetrics.horizontalScale,
+  434.58439909069745 * urbanWaterCoverMetrics.horizontalScale,
+  settings.layers.water.color,
+  "Amsterdam water underneath urban land cover with terrain relief enabled",
+);
+
 const isolatedMask = waterGeometry.createWaterMask(
   [
     [
@@ -454,6 +494,7 @@ if (liveModelPath) {
     layers: {
       ...input.layers,
       roads: false,
+      terrain: true,
     },
     modelData: liveModelData,
     radiusMeters: liveRadiusMeters,

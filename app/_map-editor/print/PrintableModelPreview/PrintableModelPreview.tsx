@@ -478,6 +478,138 @@ function planarRegionContainsPoint(region: PlanarRegion, point: [number, number]
   );
 }
 
+function triangleContainsPoint(
+  triangle: [THREE.Vector2, THREE.Vector2, THREE.Vector2],
+  point: [number, number],
+) {
+  const [first, second, third] = triangle;
+  const area =
+    (second.y - third.y) * (first.x - third.x) +
+    (third.x - second.x) * (first.y - third.y);
+  if (Math.abs(area) <= 0.000001) {
+    return false;
+  }
+
+  const alpha =
+    ((second.y - third.y) * (point[0] - third.x) +
+      (third.x - second.x) * (point[1] - third.y)) /
+    area;
+  const beta =
+    ((third.y - first.y) * (point[0] - third.x) +
+      (first.x - third.x) * (point[1] - third.y)) /
+    area;
+  const gamma = 1 - alpha - beta;
+
+  return alpha >= -0.000001 && beta >= -0.000001 && gamma >= -0.000001;
+}
+
+function segmentDirection(
+  start: [number, number],
+  end: [number, number],
+  point: [number, number],
+) {
+  return (
+    (point[0] - start[0]) * (end[1] - start[1]) -
+    (point[1] - start[1]) * (end[0] - start[0])
+  );
+}
+
+function segmentsIntersect(
+  firstStart: [number, number],
+  firstEnd: [number, number],
+  secondStart: [number, number],
+  secondEnd: [number, number],
+) {
+  const firstToSecondStart = segmentDirection(firstStart, firstEnd, secondStart);
+  const firstToSecondEnd = segmentDirection(firstStart, firstEnd, secondEnd);
+  const secondToFirstStart = segmentDirection(secondStart, secondEnd, firstStart);
+  const secondToFirstEnd = segmentDirection(secondStart, secondEnd, firstEnd);
+
+  return (
+    firstToSecondStart * firstToSecondEnd <= 0.000001 &&
+    secondToFirstStart * secondToFirstEnd <= 0.000001
+  );
+}
+
+function triangleOverlapsPlanarRegion(
+  triangle: [THREE.Vector2, THREE.Vector2, THREE.Vector2],
+  region: PlanarRegion,
+) {
+  const trianglePoints = triangle.map((point) => [point.x, point.y] as [number, number]);
+  const samplePoints: [number, number][] = [];
+  const sampleSteps = 4;
+  for (let firstWeight = 0; firstWeight <= sampleSteps; firstWeight += 1) {
+    for (
+      let secondWeight = 0;
+      secondWeight <= sampleSteps - firstWeight;
+      secondWeight += 1
+    ) {
+      const thirdWeight = sampleSteps - firstWeight - secondWeight;
+      samplePoints.push([
+        (triangle[0].x * firstWeight +
+          triangle[1].x * secondWeight +
+          triangle[2].x * thirdWeight) /
+          sampleSteps,
+        (triangle[0].y * firstWeight +
+          triangle[1].y * secondWeight +
+          triangle[2].y * thirdWeight) /
+          sampleSteps,
+      ]);
+    }
+  }
+
+  if (samplePoints.some((point) => planarRegionContainsPoint(region, point))) {
+    return true;
+  }
+
+  if (
+    region.outer.some((point) =>
+      triangleContainsPoint(triangle, [point[0], point[1]]),
+    )
+  ) {
+    return true;
+  }
+
+  const triangleEdges = trianglePoints.map(
+    (point, index) =>
+      [point, trianglePoints[(index + 1) % trianglePoints.length]] as [
+        [number, number],
+        [number, number],
+      ],
+  );
+  const ring = region.outer;
+  for (let index = 0; index < ring.length - 1; index += 1) {
+    const ringStart = ring[index];
+    const ringEnd = ring[index + 1];
+    if (
+      triangleEdges.some(([edgeStart, edgeEnd]) =>
+        segmentsIntersect(edgeStart, edgeEnd, ringStart, ringEnd),
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function triangleOverlapsPlanarRegions(
+  vertices: THREE.Vector2[],
+  triangleIndices: number[],
+  regions: PlanarRegion[],
+) {
+  if (regions.length === 0) {
+    return false;
+  }
+
+  const triangle = triangleIndices.map((index) => vertices[index]) as [
+    THREE.Vector2,
+    THREE.Vector2,
+    THREE.Vector2,
+  ];
+  return regions.some((region) => triangleOverlapsPlanarRegion(triangle, region));
+}
+
 function landCoverTopOffsetMm(
   input: ModelInput,
   categoryKey: PrintableLandCoverCategoryKey,
@@ -1034,6 +1166,7 @@ function addDrapedPlanarRegionLayer(
   topY: number,
   heightMm: number,
   terrainClearanceMm = 0,
+  excludedRegions: PlanarRegion[] = [],
 ) {
   const outer = planarRingVectors(region.outer);
   const holes = region.holes
@@ -1066,6 +1199,10 @@ function addDrapedPlanarRegionLayer(
   }
 
   for (const triangle of triangles) {
+    if (triangleOverlapsPlanarRegions(vertices, triangle, excludedRegions)) {
+      continue;
+    }
+
     indices.push(triangle[0], triangle[2], triangle[1]);
   }
 
@@ -1076,6 +1213,10 @@ function addDrapedPlanarRegionLayer(
     }
 
     for (const triangle of triangles) {
+      if (triangleOverlapsPlanarRegions(vertices, triangle, excludedRegions)) {
+        continue;
+      }
+
       indices.push(
         bottomOffset + triangle[0],
         bottomOffset + triangle[1],
@@ -1466,6 +1607,7 @@ function addLandCover(
   input: ModelInput,
   metrics: ModelMetrics,
   landCoverLayers: VisibleLandCoverLayer[],
+  waterCutoutRegions: PlanarRegion[] = [],
 ) {
   if (!input.modelData || !input.layers.landCover) {
     return;
@@ -1503,6 +1645,7 @@ function addLandCover(
           topY,
           height,
           DRAPED_LAND_COVER_CLEARANCE_MM,
+          waterCutoutRegions,
         );
       } else {
         addPlanarRegionLayer(
@@ -1570,7 +1713,7 @@ function addOpenStreetMapLayers(
   const waterMask = waterMaskWithEdgeFill(input, metrics, waterFeatures.mask);
   const landCoverLayers =
     precomputedLandCoverLayers ?? visibleLandCoverLayers(input, metrics, waterMask);
-  addLandCover(group, input, metrics, landCoverLayers);
+  addLandCover(group, input, metrics, landCoverLayers, planarRegions(waterMask));
   addWater(group, input, metrics, waterFeatures);
   addRoads(group, input, metrics);
 }
