@@ -76,7 +76,7 @@ const previewPath = path.join(
   "app/_map-editor/print/PrintableModelPreview/PrintableModelPreview.tsx",
 );
 const preview = loadTypeScriptModule(previewPath, (source) =>
-  `${source}\nexport { addOpenStreetMapLayers, createModelMetrics };\n`,
+  `${source}\nexport { addOpenStreetMapLayers, createModelMetrics, createPrintableModel };\n`,
 );
 const printModel = loadTypeScriptModule(
   path.join(projectRoot, "lib/printModel.ts"),
@@ -91,7 +91,7 @@ const input = {
   layers: {
     buildings: false,
     landCover: true,
-    roads: false,
+    roads: true,
     water: true,
   },
   modelData: {
@@ -132,6 +132,16 @@ const input = {
           { x: -5, y: -40 },
         ],
       },
+      {
+        kind: "harbor",
+        points: [
+          { x: -12, y: 45 },
+          { x: 12, y: 45 },
+          { x: 12, y: 49 },
+          { x: -12, y: 49 },
+          { x: -12, y: 45 },
+        ],
+      },
     ],
     waterLines: [
       {
@@ -162,34 +172,204 @@ const input = {
     totalSideMm: 104,
   },
 };
-const group = new THREE.Group();
-const metrics = preview.createModelMetrics(input);
-preview.addOpenStreetMapLayers(group, input, metrics);
+input.modelData.roads.push({
+  kind: "residential",
+  points: [
+    { x: -25, y: 0 },
+    { x: 25, y: 0 },
+  ],
+  widthMeters: 6,
+});
+const group = preview.createPrintableModel(input);
 group.updateMatrixWorld(true);
 
-function assertWaterIsVisibleAt(x, z, description) {
+function colorOfMaterial(material) {
+  assert.ok(
+    material instanceof THREE.MeshStandardMaterial,
+    "The sampled layer should use a standard material.",
+  );
+
+  return `#${material.color.getHexString()}`;
+}
+
+function topIntersectionAt(targetGroup, x, z, description) {
   const raycaster = new THREE.Raycaster(
     new THREE.Vector3(x, 100, z),
     new THREE.Vector3(0, -1, 0),
   );
-  const intersections = raycaster.intersectObject(group, true);
+  const intersections = raycaster.intersectObject(targetGroup, true);
 
   assert.ok(intersections.length > 0, `${description} should hit a surface.`);
 
-  const topMaterial = intersections[0].object.material;
-  assert.ok(
-    topMaterial instanceof THREE.MeshStandardMaterial,
-    `${description} should use a standard layer material.`,
-  );
-  assert.equal(
-    `#${topMaterial.color.getHexString()}`,
-    settings.layers.water.color.toLowerCase(),
-    `Water must be the top visible layer for ${description}.`,
-  );
+  return intersections[0];
 }
 
-assertWaterIsVisibleAt(0, 0, "a polygon canal overlapping land cover");
-assertWaterIsVisibleAt(20, -20, "a centerline canal overlapping land cover");
+function assertTopColorAt(targetGroup, x, z, color, description) {
+  const top = topIntersectionAt(targetGroup, x, z, description);
+  assert.equal(
+    colorOfMaterial(top.object.material),
+    color.toLowerCase(),
+    `${description} should be the top visible layer.`,
+  );
+
+  return top;
+}
+
+function sideIntersectionsForColor(targetGroup, x, y, color) {
+  const meshes = [];
+  targetGroup.traverse((object) => {
+    if (
+      object instanceof THREE.Mesh &&
+      object.material instanceof THREE.MeshStandardMaterial &&
+      colorOfMaterial(object.material) === color.toLowerCase()
+    ) {
+      meshes.push(object);
+    }
+  });
+
+  const raycaster = new THREE.Raycaster(
+    new THREE.Vector3(x, y, -100),
+    new THREE.Vector3(0, 0, 1),
+  );
+  return raycaster.intersectObjects(meshes, false);
+}
+
+const waterTop = assertTopColorAt(
+  group,
+  0,
+  -10,
+  settings.layers.water.color,
+  "a carved polygon canal overlapping land cover",
+);
+const landTop = assertTopColorAt(
+  group,
+  6,
+  -10,
+  settings.layers.landCover.categories.urban.color,
+  "land cover beside the carved canal",
+);
+const roadTop = assertTopColorAt(
+  group,
+  0,
+  0,
+  settings.layers.roads.categories.localStreets.color,
+  "a road crossing the carved canal",
+);
+
+assert.ok(
+  waterTop.point.y < landTop.point.y && landTop.point.y < roadTop.point.y,
+  "Canal layer height must stack as water below land cover below roads.",
+);
+assertTopColorAt(
+  group,
+  20,
+  -20,
+  settings.layers.water.color,
+  "a centerline canal cut into land cover",
+);
+assertTopColorAt(
+  group,
+  0,
+  -49.5,
+  settings.layers.water.color,
+  "edge water snapped to the map boundary",
+);
+assertTopColorAt(
+  group,
+  30,
+  -39,
+  settings.layers.landCover.categories.urban.color,
+  "dry terrain elsewhere along the map boundary",
+);
+
+const reliefInput = JSON.parse(JSON.stringify(input));
+reliefInput.layers.terrain = true;
+reliefInput.modelData.terrain = {
+  attribution: "Synthetic terrain",
+  columns: 2,
+  elevations: [0, 0, 0, 0],
+  maxElevationMeters: 0,
+  minElevationMeters: 0,
+  minX: -50,
+  minY: -50,
+  rows: 2,
+  source: "opentopodata-srtm30m",
+  spacingMeters: 100,
+};
+const reliefGroup = preview.createPrintableModel(reliefInput);
+reliefGroup.updateMatrixWorld(true);
+assertTopColorAt(
+  reliefGroup,
+  0,
+  -10,
+  settings.layers.water.color,
+  "a carved polygon canal with terrain relief enabled",
+);
+assertTopColorAt(
+  reliefGroup,
+  0,
+  -49.5,
+  settings.layers.water.color,
+  "edge water snapped to the terrain-relief boundary",
+);
+
+const raisedWaterInput = JSON.parse(JSON.stringify(input));
+raisedWaterInput.modelSettings.layers.water.extrudedHeightMm = 1;
+raisedWaterInput.modelSettings.layers.landCover.categories.urban.extrudedHeightMm = 1.4;
+const raisedWaterGroup = preview.createPrintableModel(raisedWaterInput);
+raisedWaterGroup.updateMatrixWorld(true);
+const raisedWaterMetrics = preview.createModelMetrics(raisedWaterInput);
+const raisedEdgeWater = assertTopColorAt(
+  raisedWaterGroup,
+  0,
+  -49.5,
+  settings.layers.water.color,
+  "edge water with user-raised water height",
+);
+const raisedLand = assertTopColorAt(
+  raisedWaterGroup,
+  6,
+  -10,
+  settings.layers.landCover.categories.urban.color,
+  "land cover higher than user-raised water",
+);
+assert.ok(
+  raisedEdgeWater.point.y > raisedWaterMetrics.surfaceY &&
+    raisedEdgeWater.point.y < raisedLand.point.y,
+  "Water height 1mm must lift edge water above the earth surface while staying below 1.4mm land.",
+);
+assert.ok(
+  sideIntersectionsForColor(
+    raisedWaterGroup,
+    0,
+    raisedWaterMetrics.surfaceY / 2,
+    settings.layers.water.color,
+  ).length > 0,
+  "Sunk edge water must replace the carved base down to the model bottom instead of leaving a white opening.",
+);
+
+const independentLandInput = JSON.parse(JSON.stringify(raisedWaterInput));
+independentLandInput.modelData.landCover = [];
+independentLandInput.modelSettings.layers.landCover.landHeightMm = 1.3;
+const independentLandGroup = preview.createPrintableModel(independentLandInput);
+independentLandGroup.updateMatrixWorld(true);
+const independentLandWater = assertTopColorAt(
+  independentLandGroup,
+  0,
+  -49.5,
+  settings.layers.water.color,
+  "edge water beside earth without a mapped land-cover polygon",
+);
+const independentDryLand = topIntersectionAt(
+  independentLandGroup,
+  30,
+  -39,
+  "earth controlled by the independent land height",
+);
+assert.ok(
+  independentDryLand.point.y > independentLandWater.point.y,
+  "Land height 1.3mm must place dry earth above water height 1mm even without an urban land-cover polygon.",
+);
 
 const isolatedMask = waterGeometry.createWaterMask(
   [
@@ -250,6 +430,10 @@ if (liveModelPath) {
   const liveRadiusMeters = liveModelData.radiusMeters;
   const liveInput = {
     ...input,
+    layers: {
+      ...input.layers,
+      roads: false,
+    },
     modelData: liveModelData,
     radiusMeters: liveRadiusMeters,
     size: printModel.getPrintableModelSize(liveRadiusMeters, settings),

@@ -110,6 +110,7 @@ export type PrintableLandCoverSettings = {
     PrintableLandCoverCategorySettings
   >;
   extrudedHeightMm: number;
+  landHeightMm: number;
   opacity: number;
   renderMode: PrintableRenderMode;
   verticalOffsetMm: number;
@@ -714,6 +715,7 @@ export function createDefaultPrintableModelSettings(): PrintableModelSettings {
         carveIntoTerrain: true,
         categories: createDefaultLandCoverCategorySettings(),
         extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
+        landHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         opacity: 1,
         renderMode: "extruded",
         verticalOffsetMm: 0.01,
@@ -739,7 +741,7 @@ export function createDefaultPrintableModelSettings(): PrintableModelSettings {
         minimumWidthMm: 0.5,
         opacity: 1,
         renderMode: "extruded",
-        sinkDepthMm: 0.01,
+        sinkDepthMm: 0.25,
         sinkIntoTerrain: true,
         verticalOffsetMm: 0.01,
       },
@@ -921,10 +923,32 @@ export function getPrintableModelSize(
         horizontalScale *
         settings.layers.terrain.verticalExaggeration
       : 0;
+    const landCoverHeightMm = layers.landCover
+      ? Math.max(
+          clampPrintableValue(
+            settings.layers.landCover.landHeightMm ??
+              settings.layers.landCover.categories.urban.extrudedHeightMm,
+            PRINTABLE_LAYER_LIMITS.landCoverExtrudedHeightMm,
+          ),
+          ...Object.values(settings.layers.landCover.categories)
+            .filter((category) => category.enabled)
+            .map(
+              (category) =>
+                settings.layers.landCover.verticalOffsetMm -
+                (category.carveIntoTerrain ? category.carveDepthMm : 0) +
+                (category.renderMode === "extruded"
+                  ? category.extrudedHeightMm
+                  : 0),
+            ),
+        )
+      : 0;
+    const supportedBuildingHeightMm =
+      buildingHeightMm + (layers.buildings ? landCoverHeightMm : 0);
 
     contentHeightMm = settings.dimensions.lockModelHeight
       ? terrainHeightMm
-      : terrainReliefHeightMm + buildingHeightMm;
+      : terrainReliefHeightMm +
+        Math.max(supportedBuildingHeightMm, landCoverHeightMm);
   }
 
   const mapStackHeightMm = baseHeightMm + contentHeightMm;

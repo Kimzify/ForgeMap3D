@@ -22,6 +22,7 @@ import { APP_TEXT } from "@/lib/text";
 import {
   createPolygonMask,
   createWaterMask,
+  intersectMasks,
   planarRegions,
   subtractMask,
   unionMasks,
@@ -108,7 +109,13 @@ const TERRAIN_SURFACE_COLOR = "#fff8df";
 const CIRCLE_GEOMETRY_SEGMENTS = 256;
 const DRAPED_LAND_COVER_CLEARANCE_MM = 0.35;
 const TERRAIN_RADIAL_RINGS = 20;
+const WATER_EDGE_SNAP_DISTANCE_MM = 1.5;
 const PREVIEW_UPDATE_PAINT_DELAY_MS = 60;
+
+type VisibleLandCoverLayer = {
+  categoryKey: PrintableLandCoverCategoryKey;
+  regions: PlanarRegion[];
+};
 
 function createPreviewView(size: PrintableSize): PreviewView {
   const viewRadius = Math.max(
@@ -204,6 +211,18 @@ function layerLift(liftMm: number) {
 
 function activeTerrainData(input: ModelInput) {
   return input.layers.terrain ? input.modelData?.terrain ?? null : null;
+}
+
+function printableLandHeightMm(input: ModelInput) {
+  if (!input.layers.landCover) {
+    return 0;
+  }
+
+  const settings = input.modelSettings.layers.landCover;
+  return Math.max(
+    settings.landHeightMm ?? settings.categories.urban.extrudedHeightMm,
+    0,
+  );
 }
 
 function terrainReliefMeters(input: ModelInput) {
@@ -355,6 +374,167 @@ function stableLandCoverRegion(region: PlanarRegion) {
   );
 }
 
+function visibleLandCoverLayers(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterMask: ReturnType<typeof createWaterMask>,
+): VisibleLandCoverLayer[] {
+  if (!input.modelData || !input.layers.landCover) {
+    return [];
+  }
+
+  const settings = input.modelSettings.layers.landCover;
+  const polygonsByCategory = new Map<
+    PrintableLandCoverCategoryKey,
+    PrintableModelData["landCover"]
+  >();
+  for (const polygon of input.modelData.landCover) {
+    const categoryKey = getPrintableLandCoverCategory(polygon);
+    if (!settings.categories[categoryKey].enabled) {
+      continue;
+    }
+
+    polygonsByCategory.set(categoryKey, [
+      ...(polygonsByCategory.get(categoryKey) ?? []),
+      polygon,
+    ]);
+  }
+
+  const layers: VisibleLandCoverLayer[] = [];
+  let occupiedMask = waterMask;
+  for (const { key: categoryKey } of PRINTABLE_LAND_COVER_CATEGORIES) {
+    const category = settings.categories[categoryKey];
+    const polygons = polygonsByCategory.get(categoryKey) ?? [];
+    if (!category.enabled || polygons.length === 0) {
+      continue;
+    }
+
+    const categoryMask = subtractMask(
+      createPolygonMask(
+        polygons.map((polygon) => polygon.points),
+        metrics.horizontalScale,
+      ),
+      occupiedMask,
+    );
+    const regions = planarRegions(categoryMask).filter(stableLandCoverRegion);
+    if (regions.length === 0) {
+      continue;
+    }
+
+    layers.push({ categoryKey, regions });
+    const stableMask: ReturnType<typeof createWaterMask> = regions.map(
+      (region) => [region.outer, ...region.holes],
+    );
+    occupiedMask = unionMasks(occupiedMask, stableMask);
+  }
+
+  return layers;
+}
+
+function planarRingContainsPoint(
+  ring: PlanarRegion["outer"],
+  point: [number, number],
+) {
+  let inside = false;
+
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
+    const currentPoint = ring[index];
+    const previousPoint = ring[previous];
+    const segmentX = currentPoint[0] - previousPoint[0];
+    const segmentY = currentPoint[1] - previousPoint[1];
+    const pointX = point[0] - previousPoint[0];
+    const pointY = point[1] - previousPoint[1];
+    const cross = segmentX * pointY - segmentY * pointX;
+    const dot = pointX * segmentX + pointY * segmentY;
+    const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+    if (
+      Math.abs(cross) <= 0.000001 &&
+      dot >= -0.000001 &&
+      dot <= segmentLengthSquared + 0.000001
+    ) {
+      return true;
+    }
+
+    if (
+      currentPoint[1] > point[1] !== previousPoint[1] > point[1] &&
+      point[0] <
+        ((previousPoint[0] - currentPoint[0]) *
+          (point[1] - currentPoint[1])) /
+          (previousPoint[1] - currentPoint[1]) +
+          currentPoint[0]
+    ) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+function planarRegionContainsPoint(region: PlanarRegion, point: [number, number]) {
+  return (
+    planarRingContainsPoint(region.outer, point) &&
+    !region.holes.some((hole) => planarRingContainsPoint(hole, point))
+  );
+}
+
+function landCoverTopOffsetMm(
+  input: ModelInput,
+  categoryKey: PrintableLandCoverCategoryKey,
+) {
+  const settings = input.modelSettings.layers.landCover;
+  const category = settings.categories[categoryKey];
+  const height =
+    category.renderMode === "extruded" ? category.extrudedHeightMm : 0;
+  const terrainClearance = activeTerrainData(input)
+    ? DRAPED_LAND_COVER_CLEARANCE_MM
+    : 0;
+
+  return Math.max(
+    settings.verticalOffsetMm -
+      (category.carveIntoTerrain ? category.carveDepthMm : 0) +
+      layerLift(0) +
+      height +
+      terrainClearance,
+    0,
+  );
+}
+
+function buildingLandCoverLiftMm(
+  building: PrintableModelData["buildings"][number],
+  input: ModelInput,
+  metrics: ModelMetrics,
+  landCoverLayers: VisibleLandCoverLayer[],
+) {
+  const points = building.surfaces.flat();
+  let liftMm = printableLandHeightMm(input);
+  if (points.length === 0 || landCoverLayers.length === 0) {
+    return liftMm;
+  }
+
+  const minimumZ = Math.min(...points.map((point) => point.z));
+  const groundPoints = points
+    .filter((point) => point.z <= minimumZ + 0.001)
+    .map(
+      (point) =>
+        [
+          point.x * metrics.horizontalScale,
+          point.y * metrics.horizontalScale,
+        ] as [number, number],
+    );
+  for (const layer of landCoverLayers) {
+    if (
+      groundPoints.some((point) =>
+        layer.regions.some((region) => planarRegionContainsPoint(region, point)),
+      )
+    ) {
+      liftMm = Math.max(liftMm, landCoverTopOffsetMm(input, layer.categoryKey));
+    }
+  }
+
+  return liftMm;
+}
+
 function planarRingVectors(points: PlanarRegion["outer"]) {
   const ring =
     points.length > 1 &&
@@ -430,6 +610,131 @@ function createSelectionShape(
   }
 
   return new THREE.Shape(vectors);
+}
+
+function selectionMask(input: ModelInput, metrics: ModelMetrics) {
+  return createPolygonMask(
+    [
+      selectionLocalFootprint(
+        input.selection,
+        input.radiusMeters,
+        CIRCLE_GEOMETRY_SEGMENTS,
+      ),
+    ],
+    metrics.horizontalScale,
+  );
+}
+
+function selectionInsetMask(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  insetMm: number,
+) {
+  const maxInsetMm = Math.max(metrics.terrainRadiusMm - MIN_LINE_WIDTH_MM, 0);
+  const inset = Math.min(Math.max(insetMm, 0), maxInsetMm);
+  return createPolygonMask(
+    [
+      scaledFootprintPoints(input, metrics, -inset).map((point) => ({
+        x: point.x / metrics.horizontalScale,
+        y: point.y / metrics.horizontalScale,
+      })),
+    ],
+    metrics.horizontalScale,
+  );
+}
+
+function emptyWaterMask() {
+  return createWaterMask([], [], 1);
+}
+
+function projectPastSelectionEdge(point: PlanarRegion["outer"][number]) {
+  const length = Math.hypot(point[0], point[1]);
+  if (length <= MIN_LINE_WIDTH_MM) {
+    return point;
+  }
+
+  const projectedLength = length + WATER_EDGE_SNAP_DISTANCE_MM * 3;
+  const scale = projectedLength / length;
+  return [point[0] * scale, point[1] * scale] as [number, number];
+}
+
+function edgeWaterFillMask(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterMask: ReturnType<typeof createWaterMask>,
+) {
+  if (waterMask.length === 0 || WATER_EDGE_SNAP_DISTANCE_MM <= 0) {
+    return emptyWaterMask();
+  }
+
+  const outerMask = selectionMask(input, metrics);
+  const edgeBand = subtractMask(
+    outerMask,
+    selectionInsetMask(input, metrics, WATER_EDGE_SNAP_DISTANCE_MM),
+  );
+  const edgeWater = intersectMasks(waterMask, edgeBand);
+  const fillPolygons: ModelPoint[][] = [];
+
+  for (const region of planarRegions(edgeWater)) {
+    for (let index = 0; index < region.outer.length - 1; index += 1) {
+      const current = region.outer[index];
+      const next = region.outer[index + 1];
+      if (
+        Math.hypot(current[0] - next[0], current[1] - next[1]) <=
+        MIN_LINE_SEGMENT_LENGTH_MM
+      ) {
+        continue;
+      }
+
+      const projectedNext = projectPastSelectionEdge(next);
+      const projectedCurrent = projectPastSelectionEdge(current);
+      fillPolygons.push(
+        [current, next, projectedNext, projectedCurrent].map((point) => ({
+          x: point[0] / metrics.horizontalScale,
+          y: point[1] / metrics.horizontalScale,
+        })),
+      );
+    }
+  }
+
+  if (fillPolygons.length === 0) {
+    return emptyWaterMask();
+  }
+
+  return intersectMasks(
+    createPolygonMask(fillPolygons, metrics.horizontalScale),
+    outerMask,
+  );
+}
+
+function waterMaskWithEdgeFill(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterMask: ReturnType<typeof createWaterMask>,
+) {
+  return unionMasks(waterMask, edgeWaterFillMask(input, metrics, waterMask));
+}
+
+function waterTerrainCutMask(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterFeatures: ReturnType<typeof visibleWaterFeatures> | null,
+) {
+  return input.layers.water &&
+    input.modelSettings.layers.water.sinkIntoTerrain &&
+    waterFeatures
+    ? waterMaskWithEdgeFill(input, metrics, waterFeatures.mask)
+    : emptyWaterMask();
+}
+
+function printableTerrainRegions(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterFeatures: ReturnType<typeof visibleWaterFeatures> | null,
+) {
+  const terrainMask = selectionMask(input, metrics);
+  const cutMask = waterTerrainCutMask(input, metrics, waterFeatures);
+  return planarRegions(subtractMask(terrainMask, cutMask));
 }
 
 function createPath(points: THREE.Vector2[]) {
@@ -563,11 +868,15 @@ function createLod22SolidGeometry(
   verticalOffsetMm: number,
   input: ModelInput,
   metrics: ModelMetrics,
+  landCoverLayers: VisibleLandCoverLayer[],
 ) {
   const positions: number[] = [];
   const indices: number[] = [];
 
   for (const building of buildings) {
+    const buildingOffsetMm =
+      verticalOffsetMm +
+      buildingLandCoverLiftMm(building, input, metrics, landCoverLayers);
     const surfaces = building.surfaces
       .map((rawSurface) => normalizedSurface(rawSurface))
       .filter((surface) => surface.length >= 3);
@@ -597,7 +906,7 @@ function createLod22SolidGeometry(
 
       const offset = positions.length / 3;
       for (const point of surface) {
-        pushModelVertex(positions, point, verticalOffsetMm, input, metrics);
+        pushModelVertex(positions, point, buildingOffsetMm, input, metrics);
       }
 
       for (const triangle of triangles) {
@@ -815,6 +1124,7 @@ function addLinePrisms(
   topY: number,
   heightMm: number,
   widthForLine: (line: PrintableLine) => number,
+  bottomYOverride?: number,
 ) {
   const positions: number[] = [];
   const indices: number[] = [];
@@ -874,8 +1184,8 @@ function addLinePrisms(
       });
       const startTopY = topY + startTerrainHeightMm;
       const endTopY = topY + endTerrainHeightMm;
-      const startBottomY = bottomY + startTerrainHeightMm;
-      const endBottomY = bottomY + endTerrainHeightMm;
+      const startBottomY = bottomYOverride ?? bottomY + startTerrainHeightMm;
+      const endBottomY = bottomYOverride ?? bottomY + endTerrainHeightMm;
       const deltaX = endX - startX;
       const deltaZ = endZ - startZ;
       const length = Math.hypot(deltaX, deltaZ);
@@ -969,7 +1279,12 @@ function addLinePrisms(
   group.add(new THREE.Mesh(geometry, material));
 }
 
-function addBuildings(group: THREE.Group, input: ModelInput, metrics: ModelMetrics) {
+function addBuildings(
+  group: THREE.Group,
+  input: ModelInput,
+  metrics: ModelMetrics,
+  landCoverLayers: VisibleLandCoverLayer[],
+) {
   if (!input.modelData || !input.layers.buildings) {
     return;
   }
@@ -986,6 +1301,7 @@ function addBuildings(group: THREE.Group, input: ModelInput, metrics: ModelMetri
     settings.verticalOffsetMm,
     input,
     metrics,
+    landCoverLayers,
   );
   if (!geometry) {
     return;
@@ -1094,13 +1410,14 @@ function addWater(
     settings.renderMode === "extruded"
       ? settings.extrudedHeightMm
       : SURFACE_MODE_THICKNESS_MM;
-  const topY =
+  const waterBaseY =
     metrics.surfaceY +
-      settings.verticalOffsetMm -
-    (settings.sinkIntoTerrain ? settings.sinkDepthMm : 0) +
-    MIN_LAYER_LIFT_MM;
+    settings.verticalOffsetMm +
+    (settings.sinkIntoTerrain ? -settings.sinkDepthMm : MIN_LAYER_LIFT_MM);
+  const waterTopY =
+    settings.renderMode === "extruded" ? waterBaseY + height : waterBaseY;
   const waterMaterial = createLayerMaterial(settings.color, settings.opacity);
-  const polygonMask = hasTerrain
+  const basePolygonMask = hasTerrain
     ? createWaterMask(
         waterFeatures.polygons.map((polygon) => ({
           holes: polygon.holes,
@@ -1110,18 +1427,21 @@ function addWater(
         metrics.horizontalScale,
       )
     : waterFeatures.mask;
+  const polygonMask = unionMasks(
+    basePolygonMask,
+    edgeWaterFillMask(input, metrics, waterFeatures.mask),
+  );
 
   for (const region of planarRegions(polygonMask)) {
     const terrainHeightMm = averageTerrainHeightForRegion(input, metrics, region);
+    const topY = waterTopY + terrainHeightMm;
     addPlanarRegionLayer(
       group,
       region,
       waterMaterial,
-      settings.renderMode,
-      settings.renderMode === "extruded"
-        ? topY + height + terrainHeightMm
-        : topY + terrainHeightMm,
-      height,
+      settings.sinkIntoTerrain ? "extruded" : settings.renderMode,
+      topY,
+      settings.sinkIntoTerrain ? topY : height,
     );
   }
 
@@ -1132,7 +1452,7 @@ function addWater(
       input,
       metrics,
       waterMaterial,
-      settings.renderMode === "extruded" ? topY + height : topY,
+      waterTopY,
       height,
       (line) =>
         Math.max(
@@ -1140,6 +1460,7 @@ function addWater(
           settings.minimumWidthMm,
           MIN_LINE_WIDTH_MM,
         ),
+      settings.sinkIntoTerrain ? 0 : undefined,
     );
   }
 }
@@ -1148,40 +1469,15 @@ function addLandCover(
   group: THREE.Group,
   input: ModelInput,
   metrics: ModelMetrics,
-  waterMask: ReturnType<typeof createWaterMask>,
+  landCoverLayers: VisibleLandCoverLayer[],
 ) {
   if (!input.modelData || !input.layers.landCover) {
     return;
   }
 
   const settings = input.modelSettings.layers.landCover;
-  const polygonsByCategory = new Map<
-    PrintableLandCoverCategoryKey,
-    PrintableModelData["landCover"]
-  >();
-  for (const polygon of input.modelData.landCover) {
-    const categoryKey = getPrintableLandCoverCategory(polygon);
+  for (const { categoryKey, regions } of landCoverLayers) {
     const category = settings.categories[categoryKey];
-
-    if (!category.enabled) {
-      continue;
-    }
-
-    polygonsByCategory.set(categoryKey, [
-      ...(polygonsByCategory.get(categoryKey) ?? []),
-      polygon,
-    ]);
-  }
-
-  let occupiedMask = waterMask;
-  for (const { key: categoryKey } of PRINTABLE_LAND_COVER_CATEGORIES) {
-    const category = settings.categories[categoryKey];
-    const polygons = polygonsByCategory.get(categoryKey) ?? [];
-
-    if (!category.enabled || polygons.length === 0) {
-      continue;
-    }
-
     const height =
       category.renderMode === "extruded"
         ? category.extrudedHeightMm
@@ -1192,16 +1488,6 @@ function addLandCover(
       (category.carveIntoTerrain ? category.carveDepthMm : 0) +
       layerLift(0);
     const topY = category.renderMode === "extruded" ? baseY + height : baseY;
-    const categoryMask = subtractMask(
-      createPolygonMask(
-        polygons.map((polygon) => polygon.points),
-        metrics.horizontalScale,
-      ),
-      occupiedMask,
-    );
-    const stableRegions = planarRegions(categoryMask).filter(
-      stableLandCoverRegion,
-    );
     const hasTerrain = Boolean(activeTerrainData(input));
     const material = createLayerMaterial(category.color, settings.opacity, {
       polygonOffset: hasTerrain,
@@ -1209,7 +1495,7 @@ function addLandCover(
       unlit: hasTerrain,
     });
 
-    for (const region of stableRegions) {
+    for (const region of regions) {
       if (hasTerrain) {
         addDrapedPlanarRegionLayer(
           group,
@@ -1234,10 +1520,6 @@ function addLandCover(
       }
     }
 
-    const stableMask: ReturnType<typeof createWaterMask> = stableRegions.map(
-      (region) => [region.outer, ...region.holes],
-    );
-    occupiedMask = unionMasks(occupiedMask, stableMask);
   }
 }
 
@@ -1281,18 +1563,28 @@ function addOpenStreetMapLayers(
   group: THREE.Group,
   input: ModelInput,
   metrics: ModelMetrics,
+  precomputedWaterFeatures: ReturnType<typeof visibleWaterFeatures> | null = null,
+  precomputedLandCoverLayers: VisibleLandCoverLayer[] | null = null,
 ) {
   if (!input.modelData) {
     return;
   }
 
-  const waterFeatures = visibleWaterFeatures(input, metrics);
-  addLandCover(group, input, metrics, waterFeatures.mask);
+  const waterFeatures = precomputedWaterFeatures ?? visibleWaterFeatures(input, metrics);
+  const waterMask = waterMaskWithEdgeFill(input, metrics, waterFeatures.mask);
+  const landCoverLayers =
+    precomputedLandCoverLayers ?? visibleLandCoverLayers(input, metrics, waterMask);
+  addLandCover(group, input, metrics, landCoverLayers);
   addWater(group, input, metrics, waterFeatures);
   addRoads(group, input, metrics);
 }
 
-function addBase(group: THREE.Group, input: ModelInput, metrics: ModelMetrics) {
+function addBase(
+  group: THREE.Group,
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterFeatures: ReturnType<typeof visibleWaterFeatures> | null,
+) {
   if (metrics.baseHeightMm <= 0) {
     return;
   }
@@ -1302,6 +1594,25 @@ function addBase(group: THREE.Group, input: ModelInput, metrics: ModelMetrics) {
     metalness: 0,
     roughness: 0.76,
   });
+  const regions = printableTerrainRegions(input, metrics, waterFeatures);
+  if (
+    input.layers.water &&
+    input.modelSettings.layers.water.sinkIntoTerrain &&
+    waterFeatures?.mask.length
+  ) {
+    for (const region of regions) {
+      addPlanarRegionLayer(
+        group,
+        region,
+        material,
+        "extruded",
+        metrics.surfaceY,
+        metrics.baseHeightMm,
+      );
+    }
+    return;
+  }
+
   const shape = createSelectionShape(input, metrics);
   if (!shape) {
     return;
@@ -1343,16 +1654,44 @@ function addFlatTerrainTop(
   input: ModelInput,
   metrics: ModelMetrics,
   material: THREE.Material,
+  waterFeatures: ReturnType<typeof visibleWaterFeatures> | null,
 ) {
+  const landHeightMm = printableLandHeightMm(input);
+  const renderMode = landHeightMm > 0 ? "extruded" : "surface";
+  const topY = metrics.surfaceY + landHeightMm;
+  const regions = printableTerrainRegions(input, metrics, waterFeatures);
+  if (regions.length > 0) {
+    for (const region of regions) {
+      addPlanarRegionLayer(
+        group,
+        region,
+        material,
+        renderMode,
+        topY,
+        landHeightMm,
+      );
+    }
+    return;
+  }
+
+  if (waterTerrainCutMask(input, metrics, waterFeatures).length > 0) {
+    return;
+  }
+
   const topShape = createSelectionShape(input, metrics);
   if (!topShape) {
     return;
   }
-
-  const top = new THREE.Mesh(
-    new THREE.ShapeGeometry(topShape, CIRCLE_GEOMETRY_SEGMENTS),
-    material,
-  );
+  const geometry =
+    landHeightMm > 0
+      ? new THREE.ExtrudeGeometry(topShape, {
+          bevelEnabled: false,
+          curveSegments: CIRCLE_GEOMETRY_SEGMENTS,
+          depth: landHeightMm,
+          steps: 1,
+        })
+      : new THREE.ShapeGeometry(topShape, CIRCLE_GEOMETRY_SEGMENTS);
+  const top = new THREE.Mesh(geometry, material);
   top.rotation.x = -Math.PI / 2;
   top.position.y = metrics.surfaceY;
   group.add(top);
@@ -1363,10 +1702,33 @@ function addTerrainReliefTop(
   input: ModelInput,
   metrics: ModelMetrics,
   material: THREE.Material,
+  waterFeatures: ReturnType<typeof visibleWaterFeatures> | null,
 ) {
   const terrain = activeTerrainData(input);
   if (!terrain) {
-    addFlatTerrainTop(group, input, metrics, material);
+    addFlatTerrainTop(group, input, metrics, material, waterFeatures);
+    return;
+  }
+
+  const landHeightMm = printableLandHeightMm(input);
+
+  if (
+    input.layers.water &&
+    input.modelSettings.layers.water.sinkIntoTerrain &&
+    waterFeatures?.mask.length
+  ) {
+    for (const region of printableTerrainRegions(input, metrics, waterFeatures)) {
+      addDrapedPlanarRegionLayer(
+        group,
+        region,
+        input,
+        metrics,
+        material,
+        landHeightMm > 0 ? "extruded" : "surface",
+        metrics.surfaceY + landHeightMm,
+        landHeightMm,
+      );
+    }
     return;
   }
 
@@ -1379,7 +1741,13 @@ function addTerrainReliefTop(
   );
   const centerIndex = positions.length / 3;
 
-  positions.push(0, metrics.surfaceY + terrainHeightMmAt(input, metrics, { x: 0, y: 0 }), 0);
+  positions.push(
+    0,
+    metrics.surfaceY +
+      landHeightMm +
+      terrainHeightMmAt(input, metrics, { x: 0, y: 0 }),
+    0,
+  );
 
   const ringIndices: number[][] = [];
   for (let ring = 1; ring <= TERRAIN_RADIAL_RINGS; ring += 1) {
@@ -1394,7 +1762,9 @@ function addTerrainReliefTop(
 
       positions.push(
         point.x * metrics.horizontalScale,
-        metrics.surfaceY + terrainHeightMmAt(input, metrics, point),
+        metrics.surfaceY +
+          landHeightMm +
+          terrainHeightMmAt(input, metrics, point),
         -point.y * metrics.horizontalScale,
       );
       currentRing.push(positions.length / 3 - 1);
@@ -1452,7 +1822,7 @@ function addTerrainReliefTop(
   }
 
   if (boundary.length < 3 || indices.length === 0) {
-    addFlatTerrainTop(group, input, metrics, material);
+    addFlatTerrainTop(group, input, metrics, material, waterFeatures);
     return;
   }
 
@@ -1715,6 +2085,9 @@ function createSlicerExportModel(model: THREE.Object3D) {
 function createPrintableModel(input: ModelInput) {
   const group = new THREE.Group();
   const metrics = createModelMetrics(input);
+  const waterFeatures = visibleWaterFeatures(input, metrics);
+  const waterMask = waterMaskWithEdgeFill(input, metrics, waterFeatures.mask);
+  const landCoverLayers = visibleLandCoverLayers(input, metrics, waterMask);
 
   const surfaceMaterial = new THREE.MeshStandardMaterial({
     color: activeTerrainData(input)
@@ -1724,12 +2097,18 @@ function createPrintableModel(input: ModelInput) {
     roughness: 0.82,
   });
 
-  addBase(group, input, metrics);
+  addBase(group, input, metrics, waterFeatures);
   addFrame(group, input, metrics);
-  addTerrainReliefTop(group, input, metrics, surfaceMaterial);
+  addTerrainReliefTop(group, input, metrics, surfaceMaterial, waterFeatures);
 
-  addOpenStreetMapLayers(group, input, metrics);
-  addBuildings(group, input, metrics);
+  addOpenStreetMapLayers(
+    group,
+    input,
+    metrics,
+    waterFeatures,
+    landCoverLayers,
+  );
+  addBuildings(group, input, metrics, landCoverLayers);
 
   return group;
 }

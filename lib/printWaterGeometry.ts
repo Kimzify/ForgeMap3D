@@ -249,6 +249,18 @@ export function unionMasks(left: MultiPolygon, right: MultiPolygon) {
   }
 }
 
+export function intersectMasks(left: MultiPolygon, right: MultiPolygon) {
+  if (left.length === 0 || right.length === 0) {
+    return [];
+  }
+
+  try {
+    return polygonClipping.intersection(left, right);
+  } catch {
+    return [];
+  }
+}
+
 export function planarRegions(multiPolygon: MultiPolygon): PlanarRegion[] {
   return multiPolygon.flatMap((polygon) => {
     const [outer, ...holes] = polygon;

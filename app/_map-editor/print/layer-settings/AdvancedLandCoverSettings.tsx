@@ -33,6 +33,10 @@ export default function AdvancedLandCoverSettings({
   onOpenLandCoverCategoryChange,
   openLandCoverCategory,
 }: AdvancedLandCoverSettingsProps) {
+  const landHeightMm =
+    landCoverSettings.landHeightMm ??
+    landCoverSettings.categories.urban.extrudedHeightMm;
+
   return (
     <section
       className={styles.panel}
@@ -51,6 +55,25 @@ export default function AdvancedLandCoverSettings({
       <Button variant="reset" onClick={actions.resetLandCoverSettings}>
         {COMMON_TEXT.buttons.resetAll}
       </Button>
+      <div className={styles.globalControls}>
+        <RangeNumberField
+          displayValue={`${formatMillimeters(
+            landHeightMm,
+          )} ${COMMON_TEXT.units.millimetersShort}`}
+          id="advanced-land-cover-height"
+          label={LAYER_TEXT.landCover.height}
+          limits={PRINTABLE_LAYER_LIMITS.landCoverExtrudedHeightMm}
+          onChange={(value) => {
+            const extrudedHeightMm = clampPrintableValue(
+              value,
+              PRINTABLE_LAYER_LIMITS.landCoverExtrudedHeightMm,
+            );
+            actions.updateLandCoverSettings({ landHeightMm: extrudedHeightMm });
+          }}
+          value={landHeightMm}
+        />
+        <p className={styles.help}>{LAYER_TEXT.landCover.heightHelp}</p>
+      </div>
       <div className={styles.categoryList}>
         {PRINTABLE_LAND_COVER_CATEGORIES.map(({ description, key, label }) => {
           const category = landCoverSettings.categories[key];

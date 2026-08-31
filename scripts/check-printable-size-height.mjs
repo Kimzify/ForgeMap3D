@@ -135,6 +135,23 @@ const buildingsDisabledSize = printModel.getPrintableModelSize(500, settings, {
   modelData,
 });
 
+settings.layers.landCover.landHeightMm = 1.3;
+const landOnlySize = printModel.getPrintableModelSize(500, settings, {
+  layers: {
+    buildings: false,
+    landCover: true,
+    roads: false,
+    terrain: false,
+    water: false,
+  },
+  modelData,
+});
+assert.equal(
+  landOnlySize.heightMm,
+  3.3,
+  `Final height should include the independent land layer, got ${landOnlySize.heightMm}mm.`,
+);
+
 assert.equal(
   buildingsDisabledSize.heightMm,
   2,

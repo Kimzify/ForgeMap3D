@@ -213,6 +213,9 @@ export const APP_TEXT = {
         categoryHeightHelp:
           "Categories currently use individual heights (tallest shown). Moving this slider applies one height to all categories.",
         color: "Land Cover Color",
+        height: "Land height",
+        heightHelp:
+          "Controls the earth surface independently. Grass, forest, urban, and other categories keep their own heights.",
         opacity: "Opacity",
         title: "Land Cover",
       },
