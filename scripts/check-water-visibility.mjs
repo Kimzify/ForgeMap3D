@@ -377,6 +377,7 @@ assert.ok(
 
 const independentLandInput = JSON.parse(JSON.stringify(raisedWaterInput));
 independentLandInput.modelData.landCover = [];
+independentLandInput.modelSettings.layers.landCover.landColor = "#d9efe4";
 independentLandInput.modelSettings.layers.landCover.landHeightMm = 1.3;
 const independentLandGroup = preview.createPrintableModel(independentLandInput);
 independentLandGroup.updateMatrixWorld(true);
@@ -387,10 +388,11 @@ const independentLandWater = assertTopColorAt(
   settings.layers.water.color,
   "edge water beside earth without a mapped land-cover polygon",
 );
-const independentDryLand = topIntersectionAt(
+const independentDryLand = assertTopColorAt(
   independentLandGroup,
   30,
   -39,
+  independentLandInput.modelSettings.layers.landCover.landColor,
   "earth controlled by the independent land height",
 );
 assert.ok(

@@ -105,7 +105,6 @@ const GRID_SECONDARY_COLOR = "#e8e5ec";
 const GRID_BASE_OFFSET_FACTOR = 0.14;
 const INITIAL_ANIMATION_FRAME = 0;
 const BASE_MATERIAL_COLOR = "#f3ead1";
-const TERRAIN_SURFACE_COLOR = "#fff8df";
 const CIRCLE_GEOMETRY_SEGMENTS = 256;
 const DRAPED_LAND_COVER_CLEARANCE_MM = 0.35;
 const TERRAIN_RADIAL_RINGS = 20;
@@ -211,6 +210,12 @@ function layerLift(liftMm: number) {
 
 function activeTerrainData(input: ModelInput) {
   return input.layers.terrain ? input.modelData?.terrain ?? null : null;
+}
+
+function terrainSurfaceColor(input: ModelInput) {
+  return activeTerrainData(input)
+    ? input.modelSettings.layers.terrain.color
+    : input.modelSettings.layers.landCover.landColor;
 }
 
 function printableLandHeightMm(input: ModelInput) {
@@ -2229,9 +2234,7 @@ function createPrintableModel(input: ModelInput) {
   const landCoverLayers = visibleLandCoverLayers(input, metrics, waterMask);
 
   const surfaceMaterial = new THREE.MeshStandardMaterial({
-    color: activeTerrainData(input)
-      ? input.modelSettings.layers.terrain.color
-      : TERRAIN_SURFACE_COLOR,
+    color: terrainSurfaceColor(input),
     metalness: 0,
     roughness: 0.82,
   });

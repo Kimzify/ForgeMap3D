@@ -216,6 +216,8 @@ export const APP_TEXT = {
         height: "Land height",
         heightHelp:
           "Controls the earth surface independently. Grass, forest, urban, and other categories keep their own heights.",
+        landColor: "Land Color",
+        landColorLabel: "Land color",
         opacity: "Opacity",
         title: "Land Cover",
       },

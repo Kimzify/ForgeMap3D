@@ -72,6 +72,19 @@ export default function AdvancedLandCoverSettings({
           }}
           value={landHeightMm}
         />
+        <div className={styles.controlGroup}>
+          <label className={styles.label} htmlFor="advanced-land-color">
+            {LAYER_TEXT.landCover.landColor}
+          </label>
+          <ColorField
+            color={landCoverSettings.landColor}
+            id="advanced-land-color"
+            label={LAYER_TEXT.landCover.landColorLabel}
+            onChange={(landColor) =>
+              actions.updateLandCoverSettings({ landColor })
+            }
+          />
+        </div>
         <p className={styles.help}>{LAYER_TEXT.landCover.heightHelp}</p>
       </div>
       <div className={styles.categoryList}>

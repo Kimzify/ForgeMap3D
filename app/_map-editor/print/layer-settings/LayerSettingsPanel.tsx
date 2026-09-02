@@ -350,6 +350,21 @@ export default function LayerSettingsPanel({
               }
               value={roadSettings.widthScale}
             />
+            <div className={styles.controlGroup}>
+              <label className={styles.label} htmlFor="roads-color">
+                {LAYER_TEXT.roads.color}
+              </label>
+              <ColorField
+                color={roadSettings.color}
+                disabled={!printLayers.roads}
+                id="roads-color"
+                label={LAYER_TEXT.roads.colorLabel}
+                onChange={(color) => {
+                  actions.updateRoadSettings({ color });
+                  actions.updateAllRoadCategories({ color });
+                }}
+              />
+            </div>
             <Button
               variant="advanced"
               onClick={() => onAdvancedLayerPanelChange("roads")}
@@ -377,22 +392,6 @@ export default function LayerSettingsPanel({
             {roadSettings.showComputedWidths ? (
               <RoadWidthSummary roadSettings={roadSettings} />
             ) : null}
-
-            <div className={styles.controlGroup}>
-              <label className={styles.label} htmlFor="roads-color">
-                {LAYER_TEXT.roads.color}
-              </label>
-              <ColorField
-                color={roadSettings.color}
-                disabled={!printLayers.roads}
-                id="roads-color"
-                label={LAYER_TEXT.roads.colorLabel}
-                onChange={(color) => {
-                  actions.updateRoadSettings({ color });
-                  actions.updateAllRoadCategories({ color });
-                }}
-              />
-            </div>
 
             <RangeNumberField
               disabled={!printLayers.roads}

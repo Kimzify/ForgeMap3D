@@ -110,6 +110,7 @@ export type PrintableLandCoverSettings = {
     PrintableLandCoverCategorySettings
   >;
   extrudedHeightMm: number;
+  landColor: string;
   landHeightMm: number;
   opacity: number;
   renderMode: PrintableRenderMode;
@@ -436,6 +437,7 @@ const PRINTABLE_DEFAULT_COLORS = {
     urban: "#c6ccd1",
     wetland: "#5da58f",
   },
+  land: "#fff8df",
   roads: {
     alleysService: "#717b84",
     bridges: "#4d5963",
@@ -715,6 +717,7 @@ export function createDefaultPrintableModelSettings(): PrintableModelSettings {
         carveIntoTerrain: true,
         categories: createDefaultLandCoverCategorySettings(),
         extrudedHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
+        landColor: PRINTABLE_DEFAULT_COLORS.land,
         landHeightMm: DEFAULT_EXTRUDED_HEIGHT_MM,
         opacity: 1,
         renderMode: "extruded",
