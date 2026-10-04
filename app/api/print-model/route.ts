@@ -1,4 +1,7 @@
 import { gunzipSync } from "node:zlib";
+import { ShapeUtils, Vector2 } from "three";
+import { clipSolidToSelectionBoundary } from "@/lib/buildingClip";
+import { weldBuildingSurfaces } from "@/lib/buildingWeld";
 import {
   DATA_SOURCES,
   intersectsSrtmLatitudeCoverage,
@@ -27,7 +30,6 @@ import {
   type OsmWaterElement,
 } from "@/lib/osmWaterGeometry";
 import {
-  isSurfaceInsideSelectionBoundary,
   pointDistance,
   surfaceCentroid,
 } from "@/lib/printBoundary";
@@ -638,38 +640,43 @@ function transformedVertex(
   };
 }
 
-function cityJsonRing(surface: unknown) {
+function isCityJsonRing(ring: unknown): ring is number[] {
+  return Array.isArray(ring) && ring.every(Number.isInteger);
+}
+
+// A CityJSON surface is an outer ring followed by optional inner rings
+// (courtyards, roof openings). Keep the holes: filling them caps courtyards
+// with floating slabs and leaves the building shell open.
+function cityJsonPolygon(surface: unknown) {
   if (!Array.isArray(surface)) {
     return null;
   }
 
-  if (surface.every(Number.isInteger)) {
-    return surface as number[];
+  if (isCityJsonRing(surface)) {
+    return [surface];
   }
 
-  const firstRing = surface[0];
-  return Array.isArray(firstRing) && firstRing.every(Number.isInteger)
-    ? (firstRing as number[])
-    : null;
+  const rings = surface.filter(isCityJsonRing);
+  return isCityJsonRing(surface[0]) ? rings : null;
 }
 
-function cityJsonSurfaceRings(geometry: CityJsonGeometry) {
+function cityJsonSurfacePolygons(geometry: CityJsonGeometry) {
   if (!Array.isArray(geometry.boundaries)) {
     return [];
   }
 
   if (geometry.type === "MultiSurface" || geometry.type === "CompositeSurface") {
     return geometry.boundaries
-      .map((surface) => cityJsonRing(surface))
-      .filter((ring): ring is number[] => Boolean(ring));
+      .map((surface) => cityJsonPolygon(surface))
+      .filter((polygon): polygon is number[][] => Boolean(polygon));
   }
 
   if (geometry.type === "Solid") {
     return geometry.boundaries.flatMap((shell) =>
       Array.isArray(shell)
         ? shell
-            .map((surface) => cityJsonRing(surface))
-            .filter((ring): ring is number[] => Boolean(ring))
+            .map((surface) => cityJsonPolygon(surface))
+            .filter((polygon): polygon is number[][] => Boolean(polygon))
         : [],
     );
   }
@@ -680,8 +687,8 @@ function cityJsonSurfaceRings(geometry: CityJsonGeometry) {
         ? solid.flatMap((shell) =>
             Array.isArray(shell)
               ? shell
-                  .map((surface) => cityJsonRing(surface))
-                  .filter((ring): ring is number[] => Boolean(ring))
+                  .map((surface) => cityJsonPolygon(surface))
+                  .filter((polygon): polygon is number[][] => Boolean(polygon))
               : [],
           )
         : [],
@@ -691,13 +698,12 @@ function cityJsonSurfaceRings(geometry: CityJsonGeometry) {
   return [];
 }
 
-function localSurfaceFromCityJsonRing(
+function localRingFromCityJsonRing(
   ring: number[],
   vertices: Array<[number, number, number]>,
   transform: CityJsonTransform,
   groundMeters: number,
   centerRd: ModelPoint,
-  boundary: ModelPoint[],
 ) {
   const surface = ring
     .map((vertexIndex) => transformedVertex(vertices, vertexIndex, transform))
@@ -718,15 +724,64 @@ function localSurfaceFromCityJsonRing(
     surface.pop();
   }
 
-  if (surface.length < 3) {
-    return null;
+  return surface.length < 3 ? null : surface;
+}
+
+function triangulateSurfaceWithHoles(
+  outer: ModelPoint3[],
+  holes: ModelPoint3[][],
+) {
+  const normal = { x: 0, y: 0, z: 0 };
+  outer.forEach((current, index) => {
+    const next = outer[(index + 1) % outer.length];
+    normal.x += (current.y - next.y) * (current.z + next.z);
+    normal.y += (current.z - next.z) * (current.x + next.x);
+    normal.z += (current.x - next.x) * (current.y + next.y);
+  });
+  const absNormal = {
+    x: Math.abs(normal.x),
+    y: Math.abs(normal.y),
+    z: Math.abs(normal.z),
+  };
+  const project = (point: ModelPoint3) =>
+    absNormal.x > absNormal.y && absNormal.x > absNormal.z
+      ? new Vector2(point.y, point.z)
+      : absNormal.y > absNormal.z
+        ? new Vector2(point.x, point.z)
+        : new Vector2(point.x, point.y);
+  const points = [outer, ...holes].flat();
+  const outerIsClockwise = ShapeUtils.isClockWise(outer.map(project));
+
+  return ShapeUtils.triangulateShape(
+    outer.map(project),
+    holes.map((hole) => hole.map(project)),
+  ).map((triangle) => {
+    const surface = triangle.map((index) => points[index]);
+    // Keep each triangle facing the same way as the original surface.
+    return ShapeUtils.isClockWise(surface.map(project)) === outerIsClockwise
+      ? surface
+      : surface.reverse();
+  });
+}
+
+function localSurfacesFromCityJsonPolygon(
+  polygon: number[][],
+  vertices: Array<[number, number, number]>,
+  transform: CityJsonTransform,
+  groundMeters: number,
+  centerRd: ModelPoint,
+) {
+  const [outer, ...holes] = polygon.map((ring) =>
+    localRingFromCityJsonRing(ring, vertices, transform, groundMeters, centerRd),
+  );
+  if (!outer) {
+    return [];
   }
 
-  if (!isSurfaceInsideSelectionBoundary(surface, boundary)) {
-    return null;
-  }
-
-  return surface;
+  const validHoles = holes.filter((hole): hole is ModelPoint3[] => Boolean(hole));
+  return validHoles.length === 0
+    ? [outer]
+    : triangulateSurfaceWithHoles(outer, validHoles);
 }
 
 function extractBuildingsFromCityJsonTiles(
@@ -770,21 +825,18 @@ function extractBuildingsFromCityJsonTiles(
         surfaces: [],
       };
 
-      for (const ring of cityJsonSurfaceRings(lod22)) {
-        const surface = localSurfaceFromCityJsonRing(
-          ring,
+      const partSurfaces = cityJsonSurfacePolygons(lod22).flatMap((polygon) =>
+        localSurfacesFromCityJsonPolygon(
+          polygon,
           vertices,
           transform,
           groundMeters,
           centerRd,
-          boundary,
-        );
-        if (!surface) {
-          continue;
-        }
-
-        mesh.surfaces.push(surface);
-      }
+        ),
+      );
+      mesh.surfaces.push(
+        ...clipSolidToSelectionBoundary(partSurfaces, boundary),
+      );
 
       if (mesh.surfaces.length > 0) {
         buildings.set(buildingId, mesh);
@@ -792,11 +844,17 @@ function extractBuildingsFromCityJsonTiles(
     }
   }
 
-  return [...buildings.values()].sort(
-    (left, right) =>
-      pointDistance(surfaceCentroid(left.surfaces[0])) -
-      pointDistance(surfaceCentroid(right.surfaces[0])),
-  );
+  for (const building of buildings.values()) {
+    building.surfaces = weldBuildingSurfaces(building.surfaces);
+  }
+
+  return [...buildings.values()]
+    .filter((building) => building.surfaces.length > 0)
+    .sort(
+      (left, right) =>
+        pointDistance(surfaceCentroid(left.surfaces[0])) -
+        pointDistance(surfaceCentroid(right.surfaces[0])),
+    );
 }
 
 type OsmLayerKey = "buildings" | "land" | "roads" | "water";
