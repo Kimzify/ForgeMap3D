@@ -487,6 +487,56 @@ const waterWithIsland = waterGeometry.createWaterMask(
 const [islandRegion] = waterGeometry.planarRegions(waterWithIsland);
 assert.equal(islandRegion?.holes.length, 1, "Water islands must remain holes.");
 
+function maxWaterRadiusMm(targetGroup) {
+  const waterColor = settings.layers.water.color.toLowerCase();
+  const vertex = new THREE.Vector3();
+  let maxRadius = 0;
+  targetGroup.traverse((object) => {
+    if (
+      !(object instanceof THREE.Mesh) ||
+      colorOfMaterial(object.material) !== waterColor
+    ) {
+      return;
+    }
+
+    const positions = object.geometry.getAttribute("position");
+    for (let index = 0; index < positions.count; index += 1) {
+      vertex.fromBufferAttribute(positions, index).applyMatrix4(object.matrixWorld);
+      maxRadius = Math.max(maxRadius, Math.hypot(vertex.x, vertex.z));
+    }
+  });
+
+  return maxRadius;
+}
+
+for (const withTerrain of [false, true]) {
+  const crossingLineInput = JSON.parse(JSON.stringify(input));
+  crossingLineInput.layers.roads = false;
+  crossingLineInput.modelData.water = [];
+  crossingLineInput.modelData.waterLines = [
+    {
+      kind: "canal",
+      points: [
+        { x: -50, y: 10 },
+        { x: 50, y: 10 },
+      ],
+      widthMeters: 8,
+    },
+  ];
+  if (withTerrain) {
+    crossingLineInput.layers.terrain = true;
+    crossingLineInput.modelData.terrain = flatTerrain(50);
+  }
+  const crossingLineGroup = preview.createPrintableModel(crossingLineInput);
+  crossingLineGroup.updateMatrixWorld(true);
+  const crossingLineMetrics = preview.createModelMetrics(crossingLineInput);
+  assert.ok(
+    maxWaterRadiusMm(crossingLineGroup) <=
+      crossingLineMetrics.terrainRadiusMm + 0.001,
+    `Canal centerlines ending at the selection edge must not bulge past the model side wall (terrain ${withTerrain}).`,
+  );
+}
+
 const liveModelPath = process.argv[2];
 if (liveModelPath) {
   const liveModelData = JSON.parse(readFileSync(liveModelPath, "utf8"));

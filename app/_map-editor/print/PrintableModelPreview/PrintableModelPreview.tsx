@@ -1495,19 +1495,24 @@ function visibleWaterFeatures(input: ModelInput, metrics: ModelMetrics) {
   const waterLines = input.modelData.waterLines;
 
   return {
-    mask: createWaterMask(
-      polygons.map((polygon) => ({
-        holes: polygon.holes,
-        points: polygon.points,
-      })),
-      waterLines.map((line) => ({
-        points: line.points,
-        widthMm: Math.max(
-          waterLineWidthMm(line, metrics),
-          settings.minimumWidthMm,
-        ),
-      })),
-      metrics.horizontalScale,
+    // Water line buffers have round end caps, so lines clipped at the
+    // selection edge would otherwise bulge past the model's side wall.
+    mask: intersectMasks(
+      createWaterMask(
+        polygons.map((polygon) => ({
+          holes: polygon.holes,
+          points: polygon.points,
+        })),
+        waterLines.map((line) => ({
+          points: line.points,
+          widthMm: Math.max(
+            waterLineWidthMm(line, metrics),
+            settings.minimumWidthMm,
+          ),
+        })),
+        metrics.horizontalScale,
+      ),
+      selectionMask(input, metrics),
     ),
     polygons,
     waterLines,
@@ -1560,13 +1565,16 @@ function addWater(
     settings.renderMode === "extruded" ? waterBaseY + height : waterBaseY;
   const waterMaterial = createLayerMaterial(settings.color, settings.opacity);
   const basePolygonMask = hasTerrain
-    ? createWaterMask(
-        waterFeatures.polygons.map((polygon) => ({
-          holes: polygon.holes,
-          points: polygon.points,
-        })),
-        [],
-        metrics.horizontalScale,
+    ? intersectMasks(
+        createWaterMask(
+          waterFeatures.polygons.map((polygon) => ({
+            holes: polygon.holes,
+            points: polygon.points,
+          })),
+          [],
+          metrics.horizontalScale,
+        ),
+        selectionMask(input, metrics),
       )
     : waterFeatures.mask;
   const polygonMask = unionMasks(
