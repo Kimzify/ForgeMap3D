@@ -44,6 +44,10 @@ import {
   type PrintableModelData,
   type PrintableRenderMode,
 } from "@/lib/printModel";
+import {
+  BRIDGE_DECK_THICKNESS_MM,
+  createArchBridgeGeometry,
+} from "./bridgeGeometry";
 import styles from "./PrintableModelPreview.module.css";
 import type {
   ArchiveFile,
@@ -57,6 +61,7 @@ import type {
 } from "./PrintableModelPreview.types";
 
 const MIN_LAYER_LIFT_MM = 0.02;
+const BUILDING_FOOTPRINT_NUDGE_MM = 0.02;
 const MIN_LAND_COVER_REGION_AREA_MM2 = 0.08;
 const MIN_LAND_COVER_REGION_SPAN_MM = 0.15;
 const MIN_LINE_WIDTH_MM = 0.02;
@@ -415,8 +420,12 @@ function visibleLandCoverLayers(
     }
 
     const categoryMask = subtractMask(
-      createPolygonMask(
-        polygons.map((polygon) => polygon.points),
+      createWaterMask(
+        polygons.map((polygon) => ({
+          holes: polygon.holes,
+          points: polygon.points,
+        })),
+        [],
         metrics.horizontalScale,
       ),
       occupiedMask,
@@ -436,13 +445,117 @@ function visibleLandCoverLayers(
   return layers;
 }
 
+// Edges bucketed into horizontal bands, so point and triangle tests only
+// visit edges near them instead of every edge of a large water outline.
+type PlanarRingIndex = {
+  bandHeight: number;
+  bands: number[][];
+  maxY: number;
+  minY: number;
+};
+
+const PLANAR_RING_INDEX_PADDING = 0.00001;
+const planarRingIndexCache = new WeakMap<PlanarRegion["outer"], PlanarRingIndex>();
+
+function previousRingIndex(ring: PlanarRegion["outer"], index: number) {
+  return index === 0 ? ring.length - 1 : index - 1;
+}
+
+function planarRingIndex(ring: PlanarRegion["outer"]) {
+  const cached = planarRingIndexCache.get(ring);
+  if (cached) {
+    return cached;
+  }
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [, y] of ring) {
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+
+  const bandCount = Math.min(Math.max(Math.ceil(ring.length / 8), 1), 1024);
+  const index: PlanarRingIndex = {
+    bandHeight: Math.max((maxY - minY) / bandCount, 0.000001),
+    bands: Array.from({ length: bandCount }, () => []),
+    maxY,
+    minY,
+  };
+  for (let edge = 0; edge < ring.length; edge += 1) {
+    const current = ring[edge];
+    const previous = ring[previousRingIndex(ring, edge)];
+    const [firstBand, lastBand] = planarRingBandRange(
+      index,
+      Math.min(current[1], previous[1]),
+      Math.max(current[1], previous[1]),
+    );
+    for (let band = firstBand; band <= lastBand; band += 1) {
+      index.bands[band].push(edge);
+    }
+  }
+  planarRingIndexCache.set(ring, index);
+
+  return index;
+}
+
+function planarRingBandRange(index: PlanarRingIndex, fromY: number, toY: number) {
+  const bandOf = (y: number) =>
+    Math.min(
+      Math.max(Math.floor((y - index.minY) / index.bandHeight), 0),
+      index.bands.length - 1,
+    );
+
+  return [
+    bandOf(fromY - PLANAR_RING_INDEX_PADDING),
+    bandOf(toY + PLANAR_RING_INDEX_PADDING),
+  ] as const;
+}
+
+// Calls visit once per ring edge (previous vertex -> index) whose y-range
+// may overlap fromY..toY; stops early when visit returns true.
+function someRingEdgeNearY(
+  ring: PlanarRegion["outer"],
+  fromY: number,
+  toY: number,
+  visit: (index: number) => boolean,
+) {
+  const index = planarRingIndex(ring);
+  if (
+    toY < index.minY - PLANAR_RING_INDEX_PADDING ||
+    fromY > index.maxY + PLANAR_RING_INDEX_PADDING
+  ) {
+    return false;
+  }
+
+  const [firstBand, lastBand] = planarRingBandRange(index, fromY, toY);
+  const visited = firstBand === lastBand ? null : new Set<number>();
+  for (let band = firstBand; band <= lastBand; band += 1) {
+    for (const edge of index.bands[band]) {
+      if (visited) {
+        if (visited.has(edge)) {
+          continue;
+        }
+        visited.add(edge);
+      }
+
+      if (visit(edge)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function planarRingContainsPoint(
   ring: PlanarRegion["outer"],
   point: [number, number],
 ) {
   let inside = false;
 
-  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
+  // Only edges spanning the point's y can touch it or cross its ray.
+  const onEdge = someRingEdgeNearY(ring, point[1], point[1], (index) => {
+    const previous = previousRingIndex(ring, index);
     const currentPoint = ring[index];
     const previousPoint = ring[previous];
     const segmentX = currentPoint[0] - previousPoint[0];
@@ -453,10 +566,14 @@ function planarRingContainsPoint(
     const dot = pointX * segmentX + pointY * segmentY;
     const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
 
+    // A zero-length edge (the repeated closing vertex) passes the collinear
+    // test for every point, so it only touches the point it sits on.
     if (
-      Math.abs(cross) <= 0.000001 &&
-      dot >= -0.000001 &&
-      dot <= segmentLengthSquared + 0.000001
+      segmentLengthSquared <= 0.000001
+        ? Math.hypot(pointX, pointY) <= 0.000001
+        : Math.abs(cross) <= 0.000001 &&
+          dot >= -0.000001 &&
+          dot <= segmentLengthSquared + 0.000001
     ) {
       return true;
     }
@@ -471,12 +588,24 @@ function planarRingContainsPoint(
     ) {
       inside = !inside;
     }
-  }
 
-  return inside;
+    return false;
+  });
+
+  return onEdge || inside;
 }
 
 function planarRegionContainsPoint(region: PlanarRegion, point: [number, number]) {
+  const bounds = planarRegionBounds(region);
+  if (
+    point[0] < bounds.minX - PLANAR_RING_INDEX_PADDING ||
+    point[0] > bounds.maxX + PLANAR_RING_INDEX_PADDING ||
+    point[1] < bounds.minY - PLANAR_RING_INDEX_PADDING ||
+    point[1] > bounds.maxY + PLANAR_RING_INDEX_PADDING
+  ) {
+    return false;
+  }
+
   return (
     planarRingContainsPoint(region.outer, point) &&
     !region.holes.some((hole) => planarRingContainsPoint(hole, point))
@@ -536,10 +665,56 @@ function segmentsIntersect(
   );
 }
 
+type PlanarBounds = {
+  maxX: number;
+  maxY: number;
+  minX: number;
+  minY: number;
+};
+
+const planarRegionBoundsCache = new WeakMap<PlanarRegion, PlanarBounds>();
+
+function planarRegionBounds(region: PlanarRegion) {
+  const cached = planarRegionBoundsCache.get(region);
+  if (cached) {
+    return cached;
+  }
+
+  const bounds = { maxX: -Infinity, maxY: -Infinity, minX: Infinity, minY: Infinity };
+  for (const [x, y] of region.outer) {
+    bounds.minX = Math.min(bounds.minX, x);
+    bounds.minY = Math.min(bounds.minY, y);
+    bounds.maxX = Math.max(bounds.maxX, x);
+    bounds.maxY = Math.max(bounds.maxY, y);
+  }
+  planarRegionBoundsCache.set(region, bounds);
+
+  return bounds;
+}
+
+function planarBoundsOverlap(left: PlanarBounds, right: PlanarBounds) {
+  return !(
+    left.maxX < right.minX ||
+    right.maxX < left.minX ||
+    left.maxY < right.minY ||
+    right.maxY < left.minY
+  );
+}
+
 function triangleOverlapsPlanarRegion(
   triangle: [THREE.Vector2, THREE.Vector2, THREE.Vector2],
   region: PlanarRegion,
 ) {
+  const triangleBounds = {
+    maxX: Math.max(triangle[0].x, triangle[1].x, triangle[2].x),
+    maxY: Math.max(triangle[0].y, triangle[1].y, triangle[2].y),
+    minX: Math.min(triangle[0].x, triangle[1].x, triangle[2].x),
+    minY: Math.min(triangle[0].y, triangle[1].y, triangle[2].y),
+  };
+  if (!planarBoundsOverlap(triangleBounds, planarRegionBounds(region))) {
+    return false;
+  }
+
   const trianglePoints = triangle.map((point) => [point.x, point.y] as [number, number]);
   const samplePoints: [number, number][] = [];
   const sampleSteps = 4;
@@ -567,9 +742,10 @@ function triangleOverlapsPlanarRegion(
     return true;
   }
 
+  const ring = region.outer;
   if (
-    region.outer.some((point) =>
-      triangleContainsPoint(triangle, [point[0], point[1]]),
+    someRingEdgeNearY(ring, triangleBounds.minY, triangleBounds.maxY, (index) =>
+      triangleContainsPoint(triangle, [ring[index][0], ring[index][1]]),
     )
   ) {
     return true;
@@ -582,20 +758,33 @@ function triangleOverlapsPlanarRegion(
         [number, number],
       ],
   );
-  const ring = region.outer;
-  for (let index = 0; index < ring.length - 1; index += 1) {
-    const ringStart = ring[index];
-    const ringEnd = ring[index + 1];
-    if (
-      triangleEdges.some(([edgeStart, edgeEnd]) =>
-        segmentsIntersect(edgeStart, edgeEnd, ringStart, ringEnd),
-      )
-    ) {
-      return true;
-    }
-  }
+  return someRingEdgeNearY(
+    ring,
+    triangleBounds.minY,
+    triangleBounds.maxY,
+    (index) => {
+      // Edge 0 is the closing edge back to the last vertex, which repeats
+      // the first vertex in closed rings.
+      if (index === 0) {
+        return false;
+      }
 
-  return false;
+      const ringStart = ring[index - 1];
+      const ringEnd = ring[index];
+      if (
+        Math.max(ringStart[0], ringEnd[0]) <
+          triangleBounds.minX - PLANAR_RING_INDEX_PADDING ||
+        Math.min(ringStart[0], ringEnd[0]) >
+          triangleBounds.maxX + PLANAR_RING_INDEX_PADDING
+      ) {
+        return false;
+      }
+
+      return triangleEdges.some(([edgeStart, edgeEnd]) =>
+        segmentsIntersect(edgeStart, edgeEnd, ringStart, ringEnd),
+      );
+    },
+  );
 }
 
 function triangleOverlapsPlanarRegions(
@@ -644,9 +833,9 @@ function buildingLandCoverLiftMm(
   landCoverLayers: VisibleLandCoverLayer[],
 ) {
   const points = building.surfaces.flat();
-  let liftMm = printableLandHeightMm(input);
+  const landHeightMm = printableLandHeightMm(input);
   if (points.length === 0 || landCoverLayers.length === 0) {
-    return liftMm;
+    return landHeightMm;
   }
 
   const minimumZ = Math.min(...points.map((point) => point.z));
@@ -659,17 +848,44 @@ function buildingLandCoverLiftMm(
           point.y * metrics.horizontalScale,
         ] as [number, number],
     );
-  for (const layer of landCoverLayers) {
-    if (
-      groundPoints.some((point) =>
-        layer.regions.some((region) => planarRegionContainsPoint(region, point)),
-      )
-    ) {
-      liftMm = Math.max(liftMm, landCoverTopOffsetMm(input, layer.categoryKey));
-    }
-  }
+  const groundBounds = {
+    maxX: Math.max(...groundPoints.map((point) => point[0])),
+    maxY: Math.max(...groundPoints.map((point) => point[1])),
+    minX: Math.min(...groundPoints.map((point) => point[0])),
+    minY: Math.min(...groundPoints.map((point) => point[1])),
+  };
+  const nearbyLayers = landCoverLayers.map((layer) => ({
+    regions: layer.regions.filter((region) =>
+      planarBoundsOverlap(groundBounds, planarRegionBounds(region)),
+    ),
+    topMm: landCoverTopOffsetMm(input, layer.categoryKey),
+  }));
+  const center = [
+    groundPoints.reduce((sum, point) => sum + point[0], 0) / groundPoints.length,
+    groundPoints.reduce((sum, point) => sum + point[1], 0) / groundPoints.length,
+  ];
 
-  return liftMm;
+  // The building stands on the lowest surface under its footprint, so it
+  // never floats over part of it (slicers would support it). Points are
+  // nudged just inside the footprint: a garden that only borders the
+  // building must not lift it.
+  return Math.min(
+    ...groundPoints.map((point) => {
+      const distance = Math.hypot(center[0] - point[0], center[1] - point[1]);
+      const nudge = distance > 0 ? Math.min(BUILDING_FOOTPRINT_NUDGE_MM, distance / 2) / distance : 0;
+      const inside: [number, number] = [
+        point[0] + (center[0] - point[0]) * nudge,
+        point[1] + (center[1] - point[1]) * nudge,
+      ];
+      return nearbyLayers.reduce(
+        (lift, layer) =>
+          layer.regions.some((region) => planarRegionContainsPoint(region, inside))
+            ? Math.max(lift, layer.topMm)
+            : lift,
+        landHeightMm,
+      );
+    }),
+  );
 }
 
 function planarRingVectors(points: PlanarRegion["outer"]) {
@@ -795,10 +1011,13 @@ function projectPastSelectionEdge(point: PlanarRegion["outer"][number]) {
   return [point[0] * scale, point[1] * scale] as [number, number];
 }
 
+// solidGround is ground that must stay solid (see solidGroundMask); the fill
+// must not reach under it either.
 function edgeWaterFillMask(
   input: ModelInput,
   metrics: ModelMetrics,
   waterMask: ReturnType<typeof createWaterMask>,
+  solidGround: ReturnType<typeof createWaterMask> = [],
 ) {
   if (waterMask.length === 0 || WATER_EDGE_SNAP_DISTANCE_MM <= 0) {
     return emptyWaterMask();
@@ -838,18 +1057,22 @@ function edgeWaterFillMask(
     return emptyWaterMask();
   }
 
-  return intersectMasks(
+  const fill = intersectMasks(
     createPolygonMask(fillPolygons, metrics.horizontalScale),
     outerMask,
   );
+  return solidGround.length > 0 ? subtractMask(fill, solidGround) : fill;
 }
 
 function waterMaskWithEdgeFill(
   input: ModelInput,
   metrics: ModelMetrics,
-  waterMask: ReturnType<typeof createWaterMask>,
+  waterFeatures: Pick<ReturnType<typeof visibleWaterFeatures>, "mask" | "solidGround">,
 ) {
-  return unionMasks(waterMask, edgeWaterFillMask(input, metrics, waterMask));
+  return unionMasks(
+    waterFeatures.mask,
+    edgeWaterFillMask(input, metrics, waterFeatures.mask, waterFeatures.solidGround),
+  );
 }
 
 function waterTerrainCutMask(
@@ -860,7 +1083,7 @@ function waterTerrainCutMask(
   return input.layers.water &&
     input.modelSettings.layers.water.sinkIntoTerrain &&
     waterFeatures
-    ? waterMaskWithEdgeFill(input, metrics, waterFeatures.mask)
+    ? waterMaskWithEdgeFill(input, metrics, waterFeatures)
     : emptyWaterMask();
 }
 
@@ -1046,8 +1269,21 @@ function createLod22SolidGeometry(
         pushModelVertex(positions, point, buildingOffsetMm, input, metrics);
       }
 
+      // Projecting onto a coordinate plane mirrors some surfaces, so the
+      // triangulation can come out wound against the surface's outward
+      // normal. Inward faces make slicers treat buildings as hollow and fill
+      // them with supports, so each triangle follows the source ring instead.
       for (const triangle of triangles) {
-        indices.push(offset + triangle[0], offset + triangle[1], offset + triangle[2]);
+        const [a, b, c] = triangle.map((index) => surface[index]);
+        const facing =
+          ((b.y - a.y) * (c.z - a.z) - (b.z - a.z) * (c.y - a.y)) * normal.x +
+          ((b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z)) * normal.y +
+          ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) * normal.z;
+        indices.push(
+          offset + triangle[0],
+          offset + (facing >= 0 ? triangle[1] : triangle[2]),
+          offset + (facing >= 0 ? triangle[2] : triangle[1]),
+        );
       }
     }
   }
@@ -1161,6 +1397,32 @@ function addPlanarRegionLayer(
   group.add(mesh);
 }
 
+// Adds triangle a-b-c wound so its normal points along the given direction:
+// slicers read inward-facing triangles as holes in the solid.
+function pushOrientedTriangle(
+  indices: number[],
+  positions: number[],
+  a: number,
+  b: number,
+  c: number,
+  direction: [number, number, number],
+) {
+  const ax = positions[a * 3];
+  const ay = positions[a * 3 + 1];
+  const az = positions[a * 3 + 2];
+  const ux = positions[b * 3] - ax;
+  const uy = positions[b * 3 + 1] - ay;
+  const uz = positions[b * 3 + 2] - az;
+  const vx = positions[c * 3] - ax;
+  const vy = positions[c * 3 + 1] - ay;
+  const vz = positions[c * 3 + 2] - az;
+  const facing =
+    (uy * vz - uz * vy) * direction[0] +
+    (uz * vx - ux * vz) * direction[1] +
+    (ux * vy - uy * vx) * direction[2];
+  indices.push(a, ...(facing >= 0 ? [b, c] : [c, b]));
+}
+
 function addDrapedPlanarRegionLayer(
   group: THREE.Group,
   region: PlanarRegion,
@@ -1171,8 +1433,15 @@ function addDrapedPlanarRegionLayer(
   topY: number,
   heightMm: number,
   terrainClearanceMm = 0,
-  excludedRegions: PlanarRegion[] = [],
+  allExcludedRegions: PlanarRegion[] = [],
+  // A flat bottom at this height instead of one following the terrain,
+  // for layers that must stand on the flat base.
+  flatBottomY?: number,
 ) {
+  const regionBounds = planarRegionBounds(region);
+  const excludedRegions = allExcludedRegions.filter((excluded) =>
+    planarBoundsOverlap(regionBounds, planarRegionBounds(excluded)),
+  );
   const outer = planarRingVectors(region.outer);
   const holes = region.holes
     .map((hole) => planarRingVectors(hole))
@@ -1208,13 +1477,17 @@ function addDrapedPlanarRegionLayer(
       continue;
     }
 
-    indices.push(triangle[0], triangle[2], triangle[1]);
+    pushOrientedTriangle(indices, positions, triangle[0], triangle[1], triangle[2], [0, 1, 0]);
   }
 
   if (renderMode === "extruded") {
     const bottomOffset = positions.length / 3;
     for (const point of vertices) {
-      positions.push(point.x, vertexY(point) - layerHeight, -point.y);
+      positions.push(
+        point.x,
+        flatBottomY ?? vertexY(point) - layerHeight,
+        -point.y,
+      );
     }
 
     for (const triangle of triangles) {
@@ -1222,32 +1495,38 @@ function addDrapedPlanarRegionLayer(
         continue;
       }
 
-      indices.push(
+      pushOrientedTriangle(
+        indices,
+        positions,
         bottomOffset + triangle[0],
         bottomOffset + triangle[1],
         bottomOffset + triangle[2],
+        [0, -1, 0],
       );
     }
 
     let ringOffset = 0;
-    for (const ring of [outer, ...holes]) {
+    [outer, ...holes].forEach((ring, ringIndex) => {
+      // Walls face out of the solid: away from the outer ring's inside and
+      // into each hole, whichever way the rings happen to run.
+      const counterClockwise = THREE.ShapeUtils.isClockWise(ring) === false;
+      const outwardSign = (ringIndex === 0) === counterClockwise ? 1 : -1;
       for (let index = 0; index < ring.length; index += 1) {
         const nextIndex = (index + 1) % ring.length;
         const topStart = ringOffset + index;
         const topEnd = ringOffset + nextIndex;
         const bottomEnd = bottomOffset + topEnd;
         const bottomStart = bottomOffset + topStart;
-        indices.push(
-          topStart,
-          bottomStart,
-          bottomEnd,
-          topStart,
-          bottomEnd,
-          topEnd,
-        );
+        const dx = ring[nextIndex].x - ring[index].x;
+        const dy = ring[nextIndex].y - ring[index].y;
+        // Planar (dy, -dx) is outward for a counter-clockwise ring; planar y
+        // is model -z.
+        const outward: [number, number, number] = [outwardSign * dy, 0, outwardSign * dx];
+        pushOrientedTriangle(indices, positions, topStart, bottomStart, bottomEnd, outward);
+        pushOrientedTriangle(indices, positions, topStart, bottomEnd, topEnd, outward);
       }
       ringOffset += ring.length;
-    }
+    });
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -1473,11 +1752,137 @@ function waterLineWidthMm(line: PrintableLine, metrics: ModelMetrics) {
   return line.widthMeters * metrics.horizontalScale;
 }
 
+const SOLID_GROUND_VERTEX_CELL_MM = 2;
+const SOLID_GROUND_SAMPLE_MM = 0.25;
+
+// Ground under buildings and roads must not be carved away as water.
+// OpenStreetMap canal outlines often run under quay-side houses and road
+// edges (and waterways under roads), which would leave those hanging over
+// the carved canal on supports. Only features that touch water take part.
+function solidGroundMask(
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterMask: ReturnType<typeof createWaterMask>,
+) {
+  const data = input.modelData;
+  if (!data || waterMask.length === 0) {
+    return createWaterMask([], [], metrics.horizontalScale);
+  }
+
+  const scale = metrics.horizontalScale;
+  const waterRegions = planarRegions(waterMask);
+  const waterVertices = new Map<string, Array<[number, number]>>();
+  const cellOf = (value: number) => Math.floor(value / SOLID_GROUND_VERTEX_CELL_MM);
+  for (const region of waterRegions) {
+    for (const ring of [region.outer, ...region.holes]) {
+      for (const [x, y] of ring) {
+        const key = `${cellOf(x)},${cellOf(y)}`;
+        waterVertices.set(key, [...(waterVertices.get(key) ?? []), [x, y]]);
+      }
+    }
+  }
+
+  const inWater = (point: [number, number]) =>
+    waterRegions.some((region) => planarRegionContainsPoint(region, point));
+  // Samples along the ring's edges lie in water, or a water vertex lies
+  // inside the ring.
+  const ringTouchesWater = (points: ModelPoint[]) => {
+    const ring = points.map((point): [number, number] => [point.x * scale, point.y * scale]);
+    for (let index = 0; index < ring.length; index += 1) {
+      const [x1, y1] = ring[index];
+      const [x2, y2] = ring[(index + 1) % ring.length];
+      const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / SOLID_GROUND_SAMPLE_MM));
+      for (let step = 0; step < steps; step += 1) {
+        const t = step / steps;
+        if (inWater([x1 + (x2 - x1) * t, y1 + (y2 - y1) * t])) {
+          return true;
+        }
+      }
+    }
+
+    const xs = ring.map(([x]) => x);
+    const ys = ring.map(([, y]) => y);
+    for (let cellX = cellOf(Math.min(...xs)); cellX <= cellOf(Math.max(...xs)); cellX += 1) {
+      for (let cellY = cellOf(Math.min(...ys)); cellY <= cellOf(Math.max(...ys)); cellY += 1) {
+        for (const vertex of waterVertices.get(`${cellX},${cellY}`) ?? []) {
+          if (planarRingContainsPoint([...ring, ring[0]], vertex)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const polygons: Array<{ holes?: ModelPoint[][]; points: ModelPoint[] }> = [];
+  if (input.layers.buildings) {
+    for (const building of data.buildings) {
+      const minimumZ = Math.min(...building.surfaces.flat().map((point) => point.z));
+      const floors = building.surfaces.filter(
+        (surface) =>
+          surface.length >= 3 &&
+          surface.every((point) => Math.abs(point.z - minimumZ) < 0.05),
+      );
+      if (floors.some(ringTouchesWater)) {
+        polygons.push(...floors.map((floor) => ({ points: floor })));
+      }
+    }
+  }
+
+  const lines: Array<{ points: ModelPoint[]; widthMm: number }> = [];
+  if (input.layers.roads) {
+    const roadSettings = input.modelSettings.layers.roads;
+    for (const surface of data.roadSurfaces ?? []) {
+      if (roadSettings.categories[surface.category].enabled && ringTouchesWater(surface.points)) {
+        polygons.push({ holes: surface.holes, points: surface.points });
+      }
+    }
+
+    for (const line of data.roads) {
+      const category = getPrintableRoadCategory(line);
+      if (
+        category === "bridges" ||
+        category === "tunnels" ||
+        category === "ferries" ||
+        !roadSettings.categories[category].enabled ||
+        line.points.length < 2
+      ) {
+        continue;
+      }
+
+      const samples = line.points.flatMap((point, index) => {
+        const next = line.points[index + 1];
+        if (!next) {
+          return [point];
+        }
+        const steps = Math.max(
+          1,
+          Math.ceil((Math.hypot(next.x - point.x, next.y - point.y) * scale) / SOLID_GROUND_SAMPLE_MM),
+        );
+        return Array.from({ length: steps }, (_, step) => ({
+          x: point.x + ((next.x - point.x) * step) / steps,
+          y: point.y + ((next.y - point.y) * step) / steps,
+        }));
+      });
+      if (samples.some((point) => inWater([point.x * scale, point.y * scale]))) {
+        lines.push({
+          points: line.points,
+          widthMm: getRoadCategoryWidthMm(roadSettings, category),
+        });
+      }
+    }
+  }
+
+  return createWaterMask(polygons, lines, scale);
+}
+
 function visibleWaterFeatures(input: ModelInput, metrics: ModelMetrics) {
   if (!input.modelData || !input.layers.water) {
     return {
       mask: createWaterMask([], [], metrics.horizontalScale),
       polygons: [] as PrintableModelData["water"],
+      solidGround: createWaterMask([], [], metrics.horizontalScale),
       waterLines: [] as PrintableModelData["waterLines"],
     };
   }
@@ -1494,27 +1899,37 @@ function visibleWaterFeatures(input: ModelInput, metrics: ModelMetrics) {
   });
   const waterLines = input.modelData.waterLines;
 
-  return {
-    // Water line buffers have round end caps, so lines clipped at the
-    // selection edge would otherwise bulge past the model's side wall.
-    mask: intersectMasks(
-      createWaterMask(
-        polygons.map((polygon) => ({
-          holes: polygon.holes,
-          points: polygon.points,
-        })),
-        waterLines.map((line) => ({
-          points: line.points,
-          widthMm: Math.max(
-            waterLineWidthMm(line, metrics),
-            settings.minimumWidthMm,
-          ),
-        })),
-        metrics.horizontalScale,
-      ),
-      selectionMask(input, metrics),
+  // Water line buffers have round end caps, so lines clipped at the
+  // selection edge would otherwise bulge past the model's side wall.
+  const mapped = intersectMasks(
+    createWaterMask(
+      polygons.map((polygon) => ({
+        holes: polygon.holes,
+        points: polygon.points,
+      })),
+      waterLines.map((line) => ({
+        points: line.points,
+        widthMm: Math.max(
+          waterLineWidthMm(line, metrics),
+          settings.minimumWidthMm,
+        ),
+      })),
+      metrics.horizontalScale,
     ),
+    selectionMask(input, metrics),
+  );
+  // Near the rim, water is extended out to the edge; features standing on
+  // that extension must keep solid ground too.
+  const solidGround = solidGroundMask(
+    input,
+    metrics,
+    unionMasks(mapped, edgeWaterFillMask(input, metrics, mapped)),
+  );
+
+  return {
+    mask: solidGround.length > 0 ? subtractMask(mapped, solidGround) : mapped,
     polygons,
+    solidGround,
     waterLines,
   };
 }
@@ -1541,6 +1956,25 @@ function averageTerrainHeightForRegion(
   return sum / region.outer.length;
 }
 
+function waterLayerHeightMm(input: ModelInput) {
+  const settings = input.modelSettings.layers.water;
+  return settings.renderMode === "extruded"
+    ? settings.extrudedHeightMm
+    : SURFACE_MODE_THICKNESS_MM;
+}
+
+// Water surface height before terrain relief is added.
+function waterTopYMm(input: ModelInput, metrics: ModelMetrics) {
+  const settings = input.modelSettings.layers.water;
+  const waterBaseY =
+    metrics.surfaceY +
+    settings.verticalOffsetMm +
+    (settings.sinkIntoTerrain ? -settings.sinkDepthMm : MIN_LAYER_LIFT_MM);
+  return settings.renderMode === "extruded"
+    ? waterBaseY + waterLayerHeightMm(input)
+    : waterBaseY;
+}
+
 function addWater(
   group: THREE.Group,
   input: ModelInput,
@@ -1553,18 +1987,10 @@ function addWater(
 
   const settings = input.modelSettings.layers.water;
   const hasTerrain = Boolean(activeTerrainData(input));
-  const height =
-    settings.renderMode === "extruded"
-      ? settings.extrudedHeightMm
-      : SURFACE_MODE_THICKNESS_MM;
-  const waterBaseY =
-    metrics.surfaceY +
-    settings.verticalOffsetMm +
-    (settings.sinkIntoTerrain ? -settings.sinkDepthMm : MIN_LAYER_LIFT_MM);
-  const waterTopY =
-    settings.renderMode === "extruded" ? waterBaseY + height : waterBaseY;
+  const height = waterLayerHeightMm(input);
+  const waterTopY = waterTopYMm(input, metrics);
   const waterMaterial = createLayerMaterial(settings.color, settings.opacity);
-  const basePolygonMask = hasTerrain
+  const polygonsOnlyMask = hasTerrain
     ? intersectMasks(
         createWaterMask(
           waterFeatures.polygons.map((polygon) => ({
@@ -1576,10 +2002,15 @@ function addWater(
         ),
         selectionMask(input, metrics),
       )
+    : null;
+  const basePolygonMask = polygonsOnlyMask
+    ? waterFeatures.solidGround.length > 0
+      ? subtractMask(polygonsOnlyMask, waterFeatures.solidGround)
+      : polygonsOnlyMask
     : waterFeatures.mask;
   const polygonMask = unionMasks(
     basePolygonMask,
-    edgeWaterFillMask(input, metrics, waterFeatures.mask),
+    edgeWaterFillMask(input, metrics, waterFeatures.mask, waterFeatures.solidGround),
   );
 
   for (const region of planarRegions(polygonMask)) {
@@ -1639,6 +2070,10 @@ function addLandCover(
       (category.carveIntoTerrain ? category.carveDepthMm : 0) +
       layerLift(0);
     const topY = category.renderMode === "extruded" ? baseY + height : baseY;
+    const solidHeight =
+      category.renderMode === "extruded"
+        ? heightDownToSurfaceMm(metrics, topY, height)
+        : height;
     const hasTerrain = Boolean(activeTerrainData(input));
     const material = createLayerMaterial(category.color, settings.opacity, {
       polygonOffset: hasTerrain,
@@ -1656,7 +2091,7 @@ function addLandCover(
           material,
           category.renderMode,
           topY,
-          height,
+          solidHeight + DRAPED_LAND_COVER_CLEARANCE_MM,
           DRAPED_LAND_COVER_CLEARANCE_MM,
           waterCutoutRegions,
         );
@@ -1667,12 +2102,18 @@ function addLandCover(
           material,
           category.renderMode,
           topY,
-          height,
+          solidHeight,
         );
       }
     }
 
   }
+}
+
+// Height for a layer slab topped at topY that reaches down to the land
+// surface: a slab hovering on a hairline gap would be printed on supports.
+function heightDownToSurfaceMm(metrics: ModelMetrics, topY: number, heightMm: number) {
+  return Math.max(heightMm, topY - metrics.surfaceY);
 }
 
 function addRoads(group: THREE.Group, input: ModelInput, metrics: ModelMetrics) {
@@ -1705,9 +2146,203 @@ function addRoads(group: THREE.Group, input: ModelInput, metrics: ModelMetrics) 
       metrics,
       createLayerMaterial(category.color),
       topY,
-      height,
+      heightDownToSurfaceMm(metrics, topY, height),
       () => getRoadCategoryWidthMm(settings, categoryInfo.key),
     );
+  }
+}
+
+function bridgeRegions(
+  polygons: PrintableModelData["bridgeDecks"],
+  metrics: ModelMetrics,
+) {
+  return polygons?.length
+    ? planarRegions(
+        createWaterMask(
+          polygons.map((polygon) => ({
+            holes: polygon.holes,
+            points: polygon.points,
+          })),
+          [],
+          metrics.horizontalScale,
+        ),
+      )
+    : [];
+}
+
+// Bridge decks continue the road surface across the sunk water. Decks with
+// mapped piers become arch bridges; the rest are slabs on any loose piers,
+// open underneath for slicer supports.
+function addBridges(
+  group: THREE.Group,
+  input: ModelInput,
+  metrics: ModelMetrics,
+  waterRegions: PlanarRegion[],
+) {
+  if (!input.modelData || !input.layers.roads) {
+    return;
+  }
+
+  const settings = input.modelSettings.layers.roads;
+  const category = settings.categories.bridges;
+  const allDecks = input.modelData.bridgeDecks ?? [];
+  if (!category.enabled || allDecks.length === 0) {
+    return;
+  }
+
+  const roadHeight =
+    category.renderMode === "extruded"
+      ? category.extrudedHeightMm
+      : SURFACE_MODE_THICKNESS_MM;
+  const deckTopY =
+    metrics.surfaceY +
+    settings.verticalOffsetMm +
+    layerLift(0) +
+    (category.renderMode === "extruded" ? roadHeight : 0);
+  const supportY = input.layers.water
+    ? waterTopYMm(input, metrics)
+    : metrics.surfaceY;
+  // Tall road extrusions raise the deck, not thicken it: the deck stays a
+  // thin slab and the piers carry it down to the water.
+  const deckBottomY = Math.max(deckTopY - BRIDGE_DECK_THICKNESS_MM, supportY);
+  const hasTerrain = Boolean(activeTerrainData(input));
+  // Draped layers follow terrain relief but are only closed when seen from
+  // both sides, matching how land cover is drawn.
+  const material = createLayerMaterial(category.color, 1, {
+    side: hasTerrain ? THREE.DoubleSide : undefined,
+  });
+  // Arch bridges are built from thin slices; flat shading keeps their faces
+  // from showing the slice seams as stripes.
+  const archMaterial = material.clone();
+  if ("flatShading" in archMaterial) {
+    archMaterial.flatShading = true;
+  }
+  const terrainAt = (point: { x: number; y: number }) =>
+    terrainHeightMmAt(input, metrics, {
+      x: point.x / metrics.horizontalScale,
+      y: point.y / metrics.horizontalScale,
+    });
+
+  for (const deck of allDecks) {
+    if (!deck.span) {
+      continue;
+    }
+
+    const geometry = createArchBridgeGeometry({
+      deck,
+      horizontalScale: metrics.horizontalScale,
+      isOverWater: (point) =>
+        input.layers.water &&
+        waterRegions.some((region) =>
+          planarRegionContainsPoint(region, [point.x, point.y]),
+        ),
+      roadTopY: deckTopY,
+      span: deck.span,
+      supportY,
+      terrainAt,
+      verticalScale: metrics.buildingVerticalScale,
+    });
+    if (geometry) {
+      group.add(new THREE.Mesh(geometry, archMaterial));
+    }
+  }
+
+  const addSlab = (region: PlanarRegion, topY: number, heightMm: number) => {
+    if (hasTerrain) {
+      addDrapedPlanarRegionLayer(
+        group,
+        region,
+        input,
+        metrics,
+        material,
+        "extruded",
+        topY,
+        heightMm,
+      );
+    } else {
+      addPlanarRegionLayer(group, region, material, "extruded", topY, heightMm);
+    }
+  };
+
+  const flatDecks = allDecks.filter((deck) => !deck.span);
+  for (const region of bridgeRegions(flatDecks, metrics)) {
+    addSlab(region, deckTopY, deckTopY - deckBottomY);
+  }
+
+  if (flatDecks.length === 0 || deckBottomY <= supportY) {
+    return;
+  }
+
+  for (const region of bridgeRegions(input.modelData.bridgePiers, metrics)) {
+    addSlab(region, deckBottomY, deckBottomY - supportY);
+  }
+}
+
+// Exact road surfaces (BGT, in the Netherlands) at the same height as road
+// lines would be, with their real width instead of a per-category width.
+function addRoadSurfaces(group: THREE.Group, input: ModelInput, metrics: ModelMetrics) {
+  const surfaces = input.modelData?.roadSurfaces ?? [];
+  if (!input.layers.roads || surfaces.length === 0) {
+    return;
+  }
+
+  const settings = input.modelSettings.layers.roads;
+  const hasTerrain = Boolean(activeTerrainData(input));
+  for (const { key } of PRINTABLE_ROAD_CATEGORIES) {
+    const category = settings.categories[key];
+    const polygons = surfaces.filter((surface) => surface.category === key);
+    if (!category.enabled || polygons.length === 0) {
+      continue;
+    }
+
+    const height =
+      category.renderMode === "extruded"
+        ? category.extrudedHeightMm
+        : SURFACE_MODE_THICKNESS_MM;
+    const baseY = metrics.surfaceY + settings.verticalOffsetMm + layerLift(0);
+    const topY = category.renderMode === "extruded" ? baseY + height : baseY;
+    const material = createLayerMaterial(category.color, 1, {
+      side: hasTerrain ? THREE.DoubleSide : undefined,
+    });
+    // The server already merged each category, so polygons map straight to
+    // regions without another union.
+    const toPlanarRing = (ring: ModelPoint[]) => {
+      const planar = ring.map(
+        (point): [number, number] => [
+          point.x * metrics.horizontalScale,
+          point.y * metrics.horizontalScale,
+        ],
+      );
+      return [...planar, planar[0]];
+    };
+    const regions: PlanarRegion[] = polygons.map((polygon) => ({
+      holes: (polygon.holes ?? []).map(toPlanarRing),
+      outer: toPlanarRing(polygon.points),
+    }));
+
+    for (const region of regions) {
+      if (hasTerrain) {
+        addDrapedPlanarRegionLayer(
+          group,
+          region,
+          input,
+          metrics,
+          material,
+          "extruded",
+          topY,
+          heightDownToSurfaceMm(metrics, topY, height),
+        );
+      } else {
+        addPlanarRegionLayer(
+          group,
+          region,
+          material,
+          "extruded",
+          topY,
+          heightDownToSurfaceMm(metrics, topY, height),
+        );
+      }
+    }
   }
 }
 
@@ -1723,12 +2358,14 @@ function addOpenStreetMapLayers(
   }
 
   const waterFeatures = precomputedWaterFeatures ?? visibleWaterFeatures(input, metrics);
-  const waterMask = waterMaskWithEdgeFill(input, metrics, waterFeatures.mask);
+  const waterMask = waterMaskWithEdgeFill(input, metrics, waterFeatures);
   const landCoverLayers =
     precomputedLandCoverLayers ?? visibleLandCoverLayers(input, metrics, waterMask);
   addLandCover(group, input, metrics, landCoverLayers, planarRegions(waterMask));
   addWater(group, input, metrics, waterFeatures);
   addRoads(group, input, metrics);
+  addRoadSurfaces(group, input, metrics);
+  addBridges(group, input, metrics, planarRegions(waterMask));
 }
 
 function addBase(
@@ -1869,6 +2506,9 @@ function addTerrainReliefTop(
     input.modelSettings.layers.water.sinkIntoTerrain &&
     waterFeatures?.mask.length
   ) {
+    // The terrain stands on the flat base: a bottom following the relief
+    // would leave a hidden cavity that slicers fill with supports, reached
+    // from the bed where it opens at the rim.
     for (const region of printableTerrainRegions(input, metrics, waterFeatures)) {
       addDrapedPlanarRegionLayer(
         group,
@@ -1876,9 +2516,12 @@ function addTerrainReliefTop(
         input,
         metrics,
         material,
-        landHeightMm > 0 ? "extruded" : "surface",
+        "extruded",
         metrics.surfaceY + landHeightMm,
         landHeightMm,
+        0,
+        [],
+        metrics.surfaceY,
       );
     }
     return;
@@ -2238,7 +2881,7 @@ function createPrintableModel(input: ModelInput) {
   const group = new THREE.Group();
   const metrics = createModelMetrics(input);
   const waterFeatures = visibleWaterFeatures(input, metrics);
-  const waterMask = waterMaskWithEdgeFill(input, metrics, waterFeatures.mask);
+  const waterMask = waterMaskWithEdgeFill(input, metrics, waterFeatures);
   const landCoverLayers = visibleLandCoverLayers(input, metrics, waterMask);
 
   const surfaceMaterial = new THREE.MeshStandardMaterial({
@@ -2339,6 +2982,9 @@ const PrintableModelPreview = forwardRef<
               : []),
             ...(modelData.sources?.threeDbag
               ? [APP_TEXT.dataSources.threeDbag.attribution]
+              : []),
+            ...(modelData.sources?.bgt
+              ? [APP_TEXT.dataSources.bgt.attribution]
               : []),
             ...(layers.terrain && modelData.sources?.terrain && modelData.terrain
               ? [modelData.terrain.attribution]

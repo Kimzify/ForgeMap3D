@@ -1,12 +1,16 @@
 import { gunzipSync } from "node:zlib";
 import { ShapeUtils, Vector2 } from "three";
+import { fetchBgtData, type RdBbox } from "@/lib/bgt";
+import { roadsWithoutDeckedBridges } from "@/lib/bridges";
 import { clipSolidToSelectionBoundary } from "@/lib/buildingClip";
+import { orientBuildingSurfaces } from "@/lib/buildingOrientation";
 import { weldBuildingSurfaces } from "@/lib/buildingWeld";
 import {
   DATA_SOURCES,
   intersectsSrtmLatitudeCoverage,
   isInsideNetherlands,
   NETHERLANDS_VIEW,
+  usesBgtLandCover,
 } from "@/lib/dataSources";
 import {
   createLocalMetricProjection,
@@ -42,6 +46,7 @@ import {
   type PrintableLine,
   type PrintableModelData,
   type PrintablePolygon,
+  type PrintableRoadSurface,
   type PrintableTerrainData,
 } from "@/lib/printModel";
 import { clamp, lngLatToRd, rdToLngLat } from "@/lib/rd";
@@ -953,6 +958,7 @@ out geom 650;`;
   way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|living_street|unclassified|service|pedestrian|cycleway|footway|path"](${box});
   way["railway"~"rail|light_rail|tram|subway"](${box});
   way["route"="ferry"](${box});
+  way["man_made"="bridge"](${box});
 );
 out geom(${box}) 950;`;
 }
@@ -1493,6 +1499,7 @@ function classifyOsm(
   );
   const waterLines: PrintableLine[] = [];
   const landCover: PrintablePolygon[] = [];
+  const bridgeDecks: PrintablePolygon[] = [];
 
   for (const element of osm.elements ?? []) {
     if (element.type !== "way" || !element.geometry?.length) {
@@ -1515,6 +1522,14 @@ function classifyOsm(
         buildings.push(building);
       }
 
+      continue;
+    }
+
+    if (tags.man_made === "bridge") {
+      const polygon = closed ? clipPolygonToSelection(points, boundary) : [];
+      if (polygon.length >= 3) {
+        bridgeDecks.push({ kind: "bridge-deck", points: polygon });
+      }
       continue;
     }
 
@@ -1564,6 +1579,7 @@ function classifyOsm(
   }
 
   return {
+    bridgeDecks: bridgeDecks.slice(0, 300),
     buildings: buildings
       .sort(
         (left, right) =>
@@ -1722,7 +1738,26 @@ export async function GET(request: Request) {
           status: "fulfilled" as const,
           value: null,
         });
-  const [threeDbagResult, osmResult, overtureResult, terrainResult] =
+  const bgtRequest =
+    usesBgtLandCover(longitude, latitude, radiusMeters) &&
+    centerRd &&
+    threeDbagBbox
+      ? fetchBgtData(
+          threeDbagBbox as RdBbox,
+          centerRd,
+          boundary,
+          AbortSignal.timeout(60000),
+        ).catch((error: unknown) => ({
+          bridgeDecks: [] as PrintablePolygon[],
+          bridgePiers: [] as PrintablePolygon[],
+          landCover: [] as PrintablePolygon[],
+          roadSurfaces: [] as PrintableRoadSurface[],
+          warnings: [
+            `BGT land cover failed: ${errorMessage(error) ?? "data failed to load."}`,
+          ],
+        }))
+      : Promise.resolve(null);
+  const [threeDbagResult, osmResult, overtureResult, terrainResult, bgtResult] =
     await Promise.all([
       threeDbagRequest,
       fetchOsm(osmBbox, osmSignal).then(
@@ -1731,6 +1766,7 @@ export async function GET(request: Request) {
       ),
       overtureRequest,
       terrainRequest,
+      bgtRequest,
     ]);
 
   const cityJsonTiles: CityJsonTile[] = [];
@@ -1791,6 +1827,21 @@ export async function GET(request: Request) {
 
   const osm: OsmResponse = { elements: osmPayload.elements };
   const osmLayers = classifyOsm(osm, projectOsmPoint, boundary);
+  warnings.push(...(bgtResult?.warnings ?? []));
+  const bgtLandCover = bgtResult?.landCover ?? [];
+  const landCover = [...osmLayers.landCover, ...bgtLandCover];
+  const useBgtBridges = (bgtResult?.bridgeDecks.length ?? 0) > 0;
+  const bridgeDecks = useBgtBridges
+    ? (bgtResult?.bridgeDecks ?? [])
+    : osmLayers.bridgeDecks;
+  const bridgePiers = useBgtBridges ? (bgtResult?.bridgePiers ?? []) : [];
+  // BGT road surfaces have their real width and meet the bridge decks, so
+  // they replace the OpenStreetMap road lines except for ferries.
+  const roadSurfaces = bgtResult?.roadSurfaces ?? [];
+  const useBgtRoads = roadSurfaces.length > 0;
+  const roads = useBgtRoads
+    ? osmLayers.roads.filter((line) => line.category === "ferries")
+    : roadsWithoutDeckedBridges(osmLayers.roads, bridgeDecks);
   const overtureBuildings =
     overtureResult.status === "fulfilled"
       ? overtureBuildingsToPrintableBuildings(
@@ -1829,12 +1880,16 @@ export async function GET(request: Request) {
     threeDbagBuildings.length === 0 &&
     !shouldUseOvertureBuildings &&
     osmLayers.buildings.length > 0;
-  const buildings =
+  const buildings = (
     threeDbagBuildings.length > 0
       ? threeDbagBuildings
       : shouldUseOvertureBuildings
         ? overtureBuildings
-        : osmLayers.buildings;
+        : osmLayers.buildings
+  ).map((building) => ({
+    ...building,
+    surfaces: orientBuildingSurfaces(building.surfaces),
+  }));
 
   if (useThreeDbag && shouldUseOsmBuildings) {
     warnings.push(
@@ -1850,20 +1905,24 @@ export async function GET(request: Request) {
     0,
   );
   const payload: PrintableModelData = {
+    bridgeDecks,
+    bridgePiers,
     buildings,
     generatedAt: new Date().toISOString(),
-    landCover: osmLayers.landCover,
+    landCover,
     radiusMeters,
-    roads: osmLayers.roads,
+    roadSurfaces,
+    roads,
     sourceCounts: {
       buildings: distinctBuildingCount,
       buildingSurfaces,
-      landCover: osmLayers.landCover.length,
+      landCover: landCover.length,
       osmElements: osm.elements?.length ?? 0,
-      roads: osmLayers.roads.length,
+      roads: roads.length + roadSurfaces.length,
       water: osmLayers.water.length + osmLayers.waterLines.length,
     },
     sources: {
+      bgt: bgtLandCover.length > 0 || useBgtBridges || useBgtRoads,
       buildings:
         useThreeDbag && threeDbagBuildings.length > 0
           ? "threeDbag"

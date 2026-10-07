@@ -1,6 +1,19 @@
 import { APP_TEXT } from "./text";
 
 export const DATA_SOURCES = {
+  bgt: {
+    name: APP_TEXT.dataSources.bgt.name,
+    apiBaseUrl: "https://api.pdok.nl/kadaster/bgt/ogc/v1",
+    attribution: APP_TEXT.dataSources.bgt.attribution,
+    docsUrl: "https://api.pdok.nl/kadaster/bgt/ogc/v1",
+    licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+    aerialImageryUrl: "https://www.beeldmateriaal.nl/",
+    heightsUrl: "https://www.ahn.nl/",
+    aerialImageryLicenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+    // Gardens are sub-millimetre on prints of larger selections, and Dutch
+    // cities hold roughly 5,000 BGT yard parcels per square kilometre.
+    maxRadiusMeters: 1000,
+  },
   overtureMaps: {
     name: APP_TEXT.dataSources.overtureMaps.name,
     attribution: APP_TEXT.dataSources.overtureMaps.attribution,
@@ -71,6 +84,17 @@ export function isInsideNetherlands(longitude: number, latitude: number) {
   );
 }
 
+export function usesBgtLandCover(
+  longitude: number,
+  latitude: number,
+  radiusMeters: number,
+) {
+  return (
+    isInsideNetherlands(longitude, latitude) &&
+    radiusMeters <= DATA_SOURCES.bgt.maxRadiusMeters
+  );
+}
+
 export function buildingSourceForLocation(
   longitude: number,
   latitude: number,
@@ -89,6 +113,7 @@ export function intersectsSrtmLatitudeCoverage(south: number, north: number) {
 }
 
 export type AppConfig = {
+  bgt: typeof DATA_SOURCES.bgt;
   overtureMaps: typeof DATA_SOURCES.overtureMaps;
   openStreetMap: typeof DATA_SOURCES.openStreetMap;
   openTopoData: typeof DATA_SOURCES.openTopoData;
@@ -97,6 +122,7 @@ export type AppConfig = {
 };
 
 export const APP_CONFIG: AppConfig = {
+  bgt: DATA_SOURCES.bgt,
   overtureMaps: DATA_SOURCES.overtureMaps,
   openStreetMap: DATA_SOURCES.openStreetMap,
   openTopoData: DATA_SOURCES.openTopoData,

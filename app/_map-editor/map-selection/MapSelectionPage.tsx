@@ -13,6 +13,7 @@ import {
   APP_CONFIG,
   isInsideNetherlands,
   isInsideSrtmLatitudeCoverage,
+  usesBgtLandCover,
   type AppConfig,
 } from "@/lib/dataSources";
 import {
@@ -331,9 +332,13 @@ export default function MapSelectionPage() {
 
   const attribution = useMemo(
     () => ({
+      bgt: config.bgt,
       openTopoData: config.openTopoData,
       overtureMaps: config.overtureMaps,
       osm: config.openStreetMap,
+      showBgt:
+        selection !== null &&
+        usesBgtLandCover(selection.longitude, selection.latitude, radiusMeters),
       showOpenTopoData:
         selection !== null && isInsideSrtmLatitudeCoverage(selection.latitude),
       showOvertureMaps:
@@ -344,7 +349,7 @@ export default function MapSelectionPage() {
         isInsideNetherlands(selection.longitude, selection.latitude),
       threeDbag: config.threeDbag,
     }),
-    [config, selection],
+    [config, radiusMeters, selection],
   );
   const selectedLatitude = selection?.latitude ?? null;
   const selectedLongitude = selection?.longitude ?? null;

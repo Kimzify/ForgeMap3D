@@ -32,9 +32,11 @@ export type LocationSearchOptions = {
 };
 
 export type MapAttribution = {
+  bgt: AppConfig["bgt"];
   openTopoData: AppConfig["openTopoData"];
   overtureMaps: AppConfig["overtureMaps"];
   osm: AppConfig["openStreetMap"];
+  showBgt: boolean;
   showOpenTopoData: boolean;
   showOvertureMaps: boolean;
   showThreeDbag: boolean;

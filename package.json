@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/check-line-prism-boundary.mjs && node scripts/check-building-boundary.mjs && node scripts/check-building-land-height.mjs && node scripts/check-building-courtyard-holes.mjs && node scripts/check-building-edge-clipping.mjs && node scripts/check-building-sliver-vertices.mjs && node scripts/check-water-visibility.mjs && node scripts/check-land-cover-stability.mjs && node scripts/check-worldwide-scope.mjs && node scripts/check-export-orientation.mjs && node scripts/check-terrain-relief.mjs && node scripts/check-printable-size-height.mjs && node scripts/check-export-loading-yield.mjs",
+    "test": "node scripts/check-line-prism-boundary.mjs && node scripts/check-building-boundary.mjs && node scripts/check-building-land-height.mjs && node scripts/check-building-courtyard-holes.mjs && node scripts/check-building-edge-clipping.mjs && node scripts/check-building-sliver-vertices.mjs && node scripts/check-building-orientation.mjs && node scripts/check-solid-ground.mjs && node scripts/check-water-visibility.mjs && node scripts/check-land-cover-stability.mjs && node scripts/check-bgt-land-cover.mjs && node scripts/check-bridges.mjs && node scripts/check-worldwide-scope.mjs && node scripts/check-export-orientation.mjs && node scripts/check-terrain-relief.mjs && node scripts/check-printable-size-height.mjs && node scripts/check-export-loading-yield.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
     "postinstall": "node scripts/copy-cesium-assets.mjs"
   },
@@ -28,6 +28,7 @@
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
     "cesium": "^1.143.0",
+    "jpeg-js": "^0.4.4",
     "lucide-react": "^1.25.0",
     "next": "^16.2.11",
     "pbf": "^5.1.2",

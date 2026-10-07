@@ -26,6 +26,15 @@ export const APP_TEXT = {
     },
   },
   dataSources: {
+    bgt: {
+      aerialImagery: "Beeldmateriaal.nl",
+      aerialImageryLicense: "CC BY 4.0",
+      heights: "AHN",
+      attribution:
+        "Roads, land cover and bridges: BGT by Kadaster and AHN heights via PDOK, CC0; vegetation from aerial imagery © Beeldmateriaal.nl, CC BY 4.0",
+      creditPrefix: "Roads, land cover & bridges:",
+      name: "BGT",
+    },
     overtureMaps: {
       attribution:
         "Buildings: © Overture Maps Foundation and OpenStreetMap contributors",
@@ -343,7 +352,7 @@ export const APP_TEXT = {
         label: "Alleys & Service",
       },
       bridges: {
-        description: "Roads tagged as bridges",
+        description: "Bridge decks on their piers, and roads tagged as bridges",
         label: "Bridges",
       },
       crosswalks: {

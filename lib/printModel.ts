@@ -178,7 +178,33 @@ export type PrintableTerrainData = {
   spacingMeters: number;
 };
 
+// How a deck with mapped piers crosses: offsets are metres along axis from
+// origin (local coordinates). supports are the piers' extents along the
+// span; profile is the deck's rise above its lowest point from AHN.
+export type PrintableBridgeSpan = {
+  axis: ModelPoint;
+  origin: ModelPoint;
+  profile: Array<{ heightMeters: number; offset: number }>;
+  supports: Array<[number, number]>;
+};
+
+// An exact road surface (carriageway, sidewalk, parking, ...) from BGT.
+export type PrintableRoadSurface = Omit<PrintablePolygon, "category"> & {
+  category: PrintableRoadCategoryKey;
+};
+
+export type PrintableBridgeDeck = PrintablePolygon & {
+  span?: PrintableBridgeSpan;
+};
+
 export type PrintableModelData = {
+  // Bridge outlines from BGT or OpenStreetMap. Piers only come from BGT;
+  // those under a deck with a span are part of that deck's arches.
+  bridgeDecks?: PrintableBridgeDeck[];
+  bridgePiers?: PrintablePolygon[];
+  // Where present (the Netherlands), road surfaces replace the OpenStreetMap
+  // road lines, which then only carry ferries.
+  roadSurfaces?: PrintableRoadSurface[];
   buildings: PrintableBuilding[];
   generatedAt: string;
   landCover: PrintablePolygon[];
@@ -193,6 +219,7 @@ export type PrintableModelData = {
     water: number;
   };
   sources: {
+    bgt?: boolean;
     buildings: "openStreetMap" | "overtureMaps" | "threeDbag";
     openStreetMap: true;
     overtureMaps: boolean;

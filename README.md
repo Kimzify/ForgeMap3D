@@ -106,6 +106,18 @@ npm run build
   additional open sources.
 - [3DBAG](https://docs.3dbag.nl/en/) provides enhanced Dutch building geometry
   by tudelft3d and 3DGI under CC BY 4.0.
+- [BGT](https://api.pdok.nl/kadaster/bgt/ogc/v1) (Basisregistratie
+  Grootschalige Topografie) by Kadaster, served by PDOK under CC0, provides
+  Dutch road surfaces (carriageways, sidewalks, bike paths, parking),
+  vegetation, yard parcels, and bridge decks with their piers. Yards
+  become gardens only where the PDOK color-infrared aerial photo shows
+  vegetation; that imagery is
+  © [Beeldmateriaal.nl](https://www.beeldmateriaal.nl/) under CC BY 4.0. PDOK
+  services need no API key and publish no fixed rate limit; requests are
+  cached in memory for six hours.
+- [AHN](https://www.ahn.nl/) (Actueel Hoogtebestand Nederland), served by PDOK
+  under CC0, provides the surface heights that give Dutch bridge decks their
+  rise.
 - [Open Topo Data](https://www.opentopodata.org/datasets/srtm/) provides
   SRTM 30m elevation data through its public API. SRTM is supplied by USGS/NASA
   as public-domain elevation data.
@@ -124,6 +136,23 @@ required by the source licenses.
 
 - 3DBAG building detail is available only for selections centered in the
   Netherlands.
+- Bridges with mapped BGT piers print as arch bridges: the deck meets the
+  road and rises along its AHN height profile, piers and quay abutments reach
+  the water, and each opening between piers is a half-ellipse rising from the
+  water to just under the 0.6 mm deck. Openings lower than 0.3 mm stay solid,
+  so arches need the water sunk well below the road (Water sink depth).
+  Arch shapes are not surveyed; they approximate the masonry arches of Dutch
+  canal bridges. Other decks, and OpenStreetMap `man_made=bridge` outlines
+  elsewhere, print as 0.6 mm slabs level with the road, open underneath.
+  Enable supports in the slicer.
+- In the Netherlands, roads are BGT road surfaces at their real width, so
+  they meet bridge decks edge to edge; the road width settings apply only to
+  OpenStreetMap roads elsewhere (and ferries). Road surfaces on bridges are
+  left to the decks, and tunnels are not drawn.
+- BGT roads, gardens, vegetation and bridges are added only for selections in
+  the Netherlands up to a 1 km radius; elsewhere roads and land cover come
+  from OpenStreetMap alone. If BGT or the aerial imagery fails, generation
+  continues with a warning.
 - When 3DBAG building meshes are unavailable, building heights use Overture
   values where available and otherwise fall back to estimates.
 - Selections crossing the international date line are not currently supported.

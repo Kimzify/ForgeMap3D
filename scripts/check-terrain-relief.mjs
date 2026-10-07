@@ -76,7 +76,7 @@ const preview = loadTypeScriptModule(
     projectRoot,
     "app/_map-editor/print/PrintableModelPreview/PrintableModelPreview.tsx",
   ),
-  (source) => `${source}\nexport { createPrintableModel };\n`,
+  (source) => `${source}\nexport { createModelMetrics, createPrintableModel };\n`,
 );
 const printModel = loadTypeScriptModule(
   path.join(projectRoot, "lib/printModel.ts"),
@@ -193,5 +193,54 @@ assert.equal(
   false,
   "Low-relief terrain should stay flat by default.",
 );
+
+// With water sunk into the terrain, the relief is built per land region. Its
+// underside must lie on the flat base: a bottom following the relief leaves
+// a hidden cavity that slicers fill with supports from the bed at the rim.
+const pondInput = {
+  ...baseInput,
+  modelData: {
+    ...baseInput.modelData,
+    water: [
+      {
+        kind: "pond",
+        points: [
+          { x: 60, y: 60 },
+          { x: 90, y: 60 },
+          { x: 90, y: 90 },
+          { x: 60, y: 90 },
+        ],
+      },
+    ],
+  },
+};
+const pondModel = preview.createPrintableModel(pondInput);
+pondModel.updateMatrixWorld(true);
+const { surfaceY } = preview.createModelMetrics(pondInput);
+const terrainColor = settings.layers.terrain.color.toLowerCase();
+let terrainFaces = 0;
+pondModel.traverse((object) => {
+  if (!object.isMesh || `#${object.material.color.getHexString()}` !== terrainColor) {
+    return;
+  }
+
+  const positions = object.geometry.getAttribute("position");
+  const index = object.geometry.getIndex();
+  const corner = (vertex) =>
+    new THREE.Vector3().fromBufferAttribute(positions, vertex).applyMatrix4(object.matrixWorld);
+  for (let triangle = 0; triangle < index.count; triangle += 3) {
+    const [a, b, c] = [0, 1, 2].map((offset) => corner(index.getX(triangle + offset)));
+    const normal = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a));
+    if (normal.lengthSq() === 0 || normal.normalize().y > -0.7) {
+      continue;
+    }
+    terrainFaces += 1;
+    assert.ok(
+      Math.max(a.y, b.y, c.y) <= surfaceY + 1e-6,
+      "The terrain's underside must lie on the base, not follow the relief.",
+    );
+  }
+});
+assert.ok(terrainFaces > 0, "The terrain relief must be built when water is sunk into it.");
 
 console.log("Terrain relief checks passed.");

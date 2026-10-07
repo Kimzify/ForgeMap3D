@@ -102,6 +102,34 @@ export default function MapAttribution({
           </a>
         </span>
       ) : null}
+      {attribution.showBgt ? (
+        <span>
+          {DATA_SOURCE_TEXT.bgt.creditPrefix}{" "}
+          <a href={attribution.bgt.docsUrl} rel="noreferrer" target="_blank">
+            {DATA_SOURCE_TEXT.bgt.name}
+          </a>
+          ,{" "}
+          <a href={attribution.bgt.heightsUrl} rel="noreferrer" target="_blank">
+            {DATA_SOURCE_TEXT.bgt.heights}
+          </a>
+          , ©{" "}
+          <a
+            href={attribution.bgt.aerialImageryUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {DATA_SOURCE_TEXT.bgt.aerialImagery}
+          </a>
+          ,{" "}
+          <a
+            href={attribution.bgt.aerialImageryLicenseUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {DATA_SOURCE_TEXT.bgt.aerialImageryLicense}
+          </a>
+        </span>
+      ) : null}
     </div>
   );
 }
